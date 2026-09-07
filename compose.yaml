@@ -2,6 +2,7 @@ services:
   monthly-spend:
     image: ${APP_IMAGE:-ghcr.io/covenn604/monthly-spend:latest}
     container_name: monthly-spend
+    user: "${PUID:-10001}:${PGID:-10001}"
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8085}:8080"

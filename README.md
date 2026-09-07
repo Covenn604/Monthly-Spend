@@ -36,11 +36,46 @@ To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_
 | `APP_PASSWORD` | Required | Shared household password, at least 12 characters. |
 | `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.1.0` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
+| `PUID` | `10001` | Numeric UID used to run the container process. |
+| `PGID` | `10001` | Numeric primary GID used to run the container process. |
 | `CURRENCY` | `CAD` | Display currency, e.g. CAD or USD. All accounts must use the same currency; no exchange conversion. Choose before entering data. |
 | `TZ` | `America/Vancouver` | Server timezone used for the current reporting day. |
 | `COOKIE_SECURE` | `false` | Set `true` when using HTTPS through a reverse proxy. |
 
-The database is `/data/monthly-spend.sqlite3` inside the container, persisted in the `monthly-spend-data` named volume. Docker Compose prefixes the volume name with the project name. The app runs as UID/GID **10001:10001**. To use a host directory, replace `monthly-spend-data:/data` with `/your/path:/data` and make that directory writable by UID 10001. Keep the same volume when updating.
+The database is `/data/monthly-spend.sqlite3` inside the container, persisted in the `monthly-spend-data` named volume. Docker Compose prefixes the volume name with the project name. The app defaults to UID/GID **10001:10001**, configurable through `PUID` and `PGID`. To use a host directory, replace `monthly-spend-data:/data` with `/your/path:/data` and make that directory and any existing database/journal files writable by the selected user/group. Keep the same volume when updating.
+
+### Container user and data-folder permissions
+
+Compose sets the actual process identity using:
+
+```yaml
+user: "${PUID:-10001}:${PGID:-10001}"
+```
+
+Set `PUID` and `PGID` in `.env`, or in **Portainer → Stack → Environment variables**, then redeploy the stack. For example, to run under host user/group 1000:
+
+```dotenv
+PUID=1000
+PGID=1000
+```
+
+Choose IDs that have access to your host directory. Check its numeric owner and group with:
+
+```bash
+ls -ldn /mnt/array/appsdata/monthly_spend/data
+```
+
+Changing these values changes the process identity; it does **not** change ownership or ACLs on existing files or volumes. A new named volume is initially owned by the image's default UID/GID 10001:10001, so using a different identity requires preparing its permissions too. Keep the defaults for an unchanged named-volume installation unless you also update volume permissions.
+
+For a dedicated Monthly Spend bind-mount directory, stop the app before adjusting permissions. For example, if you selected 1000:1000:
+
+```bash
+sudo mkdir -p /mnt/array/appsdata/monthly_spend/data
+sudo chown -R 1000:1000 /mnt/array/appsdata/monthly_spend/data
+sudo chmod 750 /mnt/array/appsdata/monthly_spend/data
+```
+
+Use a directory dedicated to Monthly Spend; do not change ownership of another application's data directory. On hosts with filesystem ACLs, ensure the selected identity has directory traversal and read/write access through those ACLs as well. Existing database files need read/write permission. No image rebuild is needed for this Compose setting. If launching with `docker run`, the equivalent is `--user 1000:1000`; simply passing `PUID`/`PGID` as container environment variables does not change the image's user.
 
 ### Portainer
 
@@ -120,7 +155,7 @@ docker compose start
 
 Keep dated copies of backups outside the source checkout, or move `backups` elsewhere. The `.gitignore` excludes database files. If using a filesystem snapshot rather than the command above, stop the container and capture the **entire data directory**, including any SQLite journal files.
 
-To restore, stop the container, replace the database in the data volume with your backed-up database, remove stale `monthly-spend.sqlite3-wal` and `monthly-spend.sqlite3-shm` files from the stopped volume if present, ensure UID/GID 10001 owns the restored database, then start the container. Test restoration on a separate copy before relying on a backup.
+To restore, stop the container, replace the database in the data volume with your backed-up database, remove stale `monthly-spend.sqlite3-wal` and `monthly-spend.sqlite3-shm` files from the stopped volume if present, ensure the configured `PUID`/`PGID` owns the restored database, then start the container. Test restoration on a separate copy before relying on a backup.
 
 To update after taking a backup:
 
