@@ -1,0 +1,28 @@
+services:
+  monthly-spend:
+    build: .
+    image: monthly-spend:0.1.0
+    container_name: monthly-spend
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8085}:8080"
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:?Set APP_PASSWORD in .env to at least 12 characters}
+      CURRENCY: ${CURRENCY:-CAD}
+      TZ: ${TZ:-America/Vancouver}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - monthly-spend-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  monthly-spend-data:
