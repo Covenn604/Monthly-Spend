@@ -90,6 +90,39 @@ class FinanceTests(DatabaseFixture):
             with self.assertRaises(app.Invalid):app.parse_csv(raw)
         with self.assertRaises(app.Invalid):app.valid_date('2026-02-30')
 
+class CategorizationTests(DatabaseFixture):
+    def test_changes_only_categories_across_months_and_can_clear(self):
+        with app.db() as c:
+            first=self.tx(c,-5000,day='2026-01-10',cat=1)
+            second=self.tx(c,1000,kind='refund',day='2026-08-10',cat=1)
+            untouched=self.tx(c,-700,day='2026-08-11',cat=1)
+            before=[dict(r) for r in c.execute('SELECT * FROM transactions ORDER BY id')]
+        with app.db() as c:
+            self.assertEqual(app.categorize_transactions(c,{'ids':[first,second],'category_id':2}),{'updated':2})
+        with app.db() as c:
+            after=[dict(r) for r in c.execute('SELECT * FROM transactions ORDER BY id')]
+            for old,new in zip(before,after):
+                expected=2 if old['id'] in (first,second) else 1
+                self.assertEqual(new['category_id'],expected)
+                self.assertEqual({k:v for k,v in old.items() if k!='category_id'},{k:v for k,v in new.items() if k!='category_id'})
+            self.assertEqual(app.summary(c,'2026-01')['categories'][0]['id'],2)
+        with app.db() as c: app.categorize_transactions(c,{'ids':[first,second],'category_id':None})
+        with app.db() as c:
+            self.assertIsNone(c.execute('SELECT category_id FROM transactions WHERE id=?',(first,)).fetchone()[0])
+    def test_rejects_invalid_selection_without_partial_changes(self):
+        with app.db() as c:
+            expense=self.tx(c,-5000)
+            transfer=self.tx(c,-5000,kind='transfer',cat=None)
+            income=self.tx(c,5000,kind='income',cat=None)
+        invalid=[{'ids':[expense,transfer],'category_id':2},{'ids':[expense,income],'category_id':2},
+                 {'ids':[expense,99999],'category_id':2},{'ids':[expense],'category_id':99999},
+                 {'ids':[expense,expense],'category_id':2},{'ids':[],'category_id':2},
+                 {'ids':[True],'category_id':2},{'ids':[expense]}, {'ids':[expense],'category_id':''}]
+        for payload in invalid:
+            with self.assertRaises(app.Invalid):
+                with app.db() as c:app.categorize_transactions(c,payload)
+            with app.db() as c:self.assertEqual(c.execute('SELECT category_id FROM transactions WHERE id=?',(expense,)).fetchone()[0],1)
+
 class HttpTests(DatabaseFixture):
     def test_login_crud_transfer_export_and_persistence(self):
         app.PASSWORD='test-password-long'
@@ -127,8 +160,22 @@ class HttpTests(DatabaseFixture):
             self.assertIn("'=EVIL()",request('/api/export')[1])
             app.init()
             self.assertEqual(request('/api/month?month=2026-08')[1]['expenses'],1550)
+            august_id=tx['id']
+            older={**tx,'date':'2026-01-10','payee':'Same merchant','amount':'9.00'}
+            self.assertEqual(request('/api/transactions','POST',older)[0],200)
+            rows=request('/api/transactions')[1]['transactions']
+            self.assertEqual(len(rows),2)
+            self.assertEqual([r['date'] for r in rows],['2026-08-12','2026-01-10'])
+            ids=[r['id'] for r in rows]
+            self.assertEqual(request('/api/transactions/category','POST',{'ids':ids,'category_id':2},False)[0],403)
+            self.assertEqual(request('/api/transactions/category','POST',{'ids':ids,'category_id':2}),(200,{'updated':2}))
+            self.assertTrue(all(r['category_id']==2 for r in request('/api/transactions')[1]['transactions']))
+            self.assertEqual(request('/api/month?month=2026-08')[1]['expenses'],1550)
+            self.assertEqual(len(request('/api/month?month=2026-01')[1]['transactions']),1)
             self.assertEqual(request('/api/logout','POST',{})[0],200)
             self.assertEqual(request('/api/state')[0],401)
+            self.assertEqual(request('/api/transactions')[0],401)
+            self.assertEqual(request('/api/transactions/category','POST',{'ids':ids,'category_id':1})[0],401)
         finally:
             server.shutdown();server.server_close();thread.join()
 

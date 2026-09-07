@@ -2,7 +2,7 @@
 
 A small, self-hosted spending tracker for one household. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
 
-**Version 0.1.0 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; one shared household password and one currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+**Version 0.2.0 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; one shared household password and one currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
 
 ## Run with Docker Compose
 
@@ -23,7 +23,7 @@ docker compose up -d
 
 Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with that password. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.1.0`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.2.0`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
 
 Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `monthly-spend` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
 
@@ -34,7 +34,7 @@ To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Shared household password, at least 12 characters. |
-| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.1.0` for the current version tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.2.0` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `PUID` | `10001` | Numeric UID used to run the container process. |
 | `PGID` | `10001` | Numeric primary GID used to run the container process. |
@@ -92,6 +92,14 @@ After the first successful publish, open **Stacks → Add stack** and paste `com
 Amounts are stored as integer cents. Enter positive amounts for manual expenses, income, refunds, and new transfers; the selected type determines the sign. When editing an imported transfer, the form displays its signed amount.
 
 Account balances include the opening balance plus **all entered transactions**, including future-dated entries. They are ledger balances, not live bank balances or reconciled balances.
+
+## Search and categorize across months
+
+Open **Transactions**, set **Date range → All transactions**, and search by payee/merchant name. Search also matches notes and account names, across all recorded months. The category filter can narrow the list further, including **Uncategorized**. Choose **Selected month** to return to monthly browsing. Clicking a category in the monthly overview opens that month's transactions.
+
+Check individual expense/refund rows, or use the header checkbox to select every matching expense/refund. Choose a category and click **Apply to selected**. Confirm the number of records to replace their existing categories in one operation. Choose **Uncategorized** to clear assignments. Income and transfers are excluded because they do not use spending categories. Amounts, dates, payees, notes, and transfer links stay unchanged.
+
+Selections clear when the search, category, or date range changes, or after records refresh. Up to 5,000 transactions can be categorized in a single operation. The all-transactions view loads recorded history into the browser, so very large histories may take longer to display. Editing/deleting a transaction also works across months. Merchant rules can categorize future purchases; bulk categorization updates the selected existing records only.
 
 ## CSV import
 

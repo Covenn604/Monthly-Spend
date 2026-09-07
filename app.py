@@ -286,6 +286,29 @@ def commit_import(c,data):
     c.execute('DELETE FROM previews WHERE id=?',(data['token'],))
     return dict(imported=count,batch_id=batch)
 
+def categorize_transactions(c, data):
+    ids = data.get('ids')
+    if not isinstance(ids, list) or not ids or len(ids) > 5000:
+        raise Invalid('Select between 1 and 5,000 transactions.')
+    if any(type(key) is not int or key <= 0 for key in ids) or len(set(ids)) != len(ids):
+        raise Invalid('Invalid transaction selection.')
+    if 'category_id' not in data:
+        raise Invalid('Choose a category.')
+    cat = data['category_id']
+    if cat is not None and (type(cat) is not int or cat <= 0):
+        raise Invalid('Invalid category.')
+    c.execute('BEGIN IMMEDIATE')
+    if cat is not None:
+        existing(c, 'categories', cat)
+    for key in ids:
+        row = c.execute('SELECT kind FROM transactions WHERE id=?', (key,)).fetchone()
+        if not row:
+            raise Invalid('A selected transaction no longer exists. Refresh and select again.')
+        if row['kind'] not in ('expense', 'refund'):
+            raise Invalid('Only expenses and refunds can have spending categories. Refresh and select again.')
+    c.executemany('UPDATE transactions SET category_id=? WHERE id=?', [(cat, key) for key in ids])
+    return {'updated': len(ids)}
+
 class Handler(BaseHTTPRequestHandler):
     server_version='MonthlySpend'
     def setup(self):
@@ -366,6 +389,13 @@ class Handler(BaseHTTPRequestHandler):
                     report=summary(c,month)
                     report['transactions']=[dict(r) for r in c.execute('SELECT t.*,a.name account,COALESCE(c.name,"Uncategorized") category FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN categories c ON c.id=t.category_id WHERE substr(t.date,1,7)=? ORDER BY t.date DESC,t.id DESC',(month,))]
                     return self.send(200,report)
+                if path=='/api/transactions' and method=='GET':
+                    rows=[dict(r) for r in c.execute('SELECT t.*,a.name account,COALESCE(c.name,"Uncategorized") category FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN categories c ON c.id=t.category_id ORDER BY t.date DESC,t.id DESC')]
+                    return self.send(200,{'transactions':rows})
+                if path=='/api/transactions/category' and method=='POST':
+                    result=categorize_transactions(c,data)
+                    c.commit()
+                    return self.send(200,result)
                 if path=='/api/accounts' and method=='POST':
                     name=clean(data.get('name'),80)
                     if not name: raise Invalid('Enter an account name.')
