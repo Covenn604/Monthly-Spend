@@ -2,7 +2,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data PORT=8080
 WORKDIR /app
 RUN groupadd --gid 10001 monthlyspend && useradd --uid 10001 --gid monthlyspend --no-create-home monthlyspend && mkdir /data && chown monthlyspend:monthlyspend /data
-COPY --chown=monthlyspend:monthlyspend app.py /app/app.py
+COPY --chown=monthlyspend:monthlyspend app.py auth.py /app/
 COPY --chown=monthlyspend:monthlyspend static /app/static
 USER 10001:10001
 EXPOSE 8080

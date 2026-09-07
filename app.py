@@ -1,4 +1,6 @@
-"""Monthly Spend: single-household, LAN-first spending tracker."""
+"""Spearmint: independent, self-hosted spending tracker inspired by Mint."""
+import auth
+from contextvars import ContextVar
 import calendar
 import csv
 import hashlib
@@ -24,13 +26,18 @@ PASSWORD = os.environ.get('APP_PASSWORD', '')
 SESSIONS = {}
 ATTEMPTS = {}
 LOCK = threading.Lock()
+CURRENT_USER = ContextVar('current_user', default=1)
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
 
 class Invalid(ValueError):
     pass
 
 @contextmanager
 def db():
-    con = sqlite3.connect(DATA / 'monthly-spend.sqlite3', timeout=15)
+    user_id = CURRENT_USER.get()
+    folder = DATA if user_id == 1 else DATA / 'users' / str(user_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(folder / 'monthly-spend.sqlite3', timeout=15)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA foreign_keys=ON')
     try:
@@ -42,6 +49,7 @@ def db():
 def init():
     DATA.mkdir(parents=True, exist_ok=True)
     with db() as c:
+        fresh_categories = not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='categories'").fetchone()
         c.executescript('''
         PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, opening INTEGER NOT NULL DEFAULT 0);
@@ -58,7 +66,7 @@ def init():
         CREATE TABLE IF NOT EXISTS profiles(name TEXT PRIMARY KEY, mapping TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS rules(id INTEGER PRIMARY KEY, contains_text TEXT NOT NULL UNIQUE, category_id INTEGER NOT NULL REFERENCES categories(id));
         ''')
-        if not c.execute('SELECT 1 FROM categories LIMIT 1').fetchone():
+        if fresh_categories:
             c.executemany('INSERT INTO categories(name) VALUES (?)', [(v,) for v in ['Housing','Groceries','Dining out','Transportation','Utilities','Shopping','Health','Entertainment','Subscriptions','Travel','Other']])
 
 def money(value, decimal_comma=False):
@@ -310,7 +318,7 @@ def categorize_transactions(c, data):
     return {'updated': len(ids)}
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MonthlySpend'
+    server_version='Spearmint'
     def setup(self):
         super().setup()
         self.connection.settimeout(30)
@@ -335,12 +343,21 @@ class Handler(BaseHTTPRequestHandler):
         except Exception: return False
         token=cookie.get('session')
         with LOCK:
-            return bool(token and SESSIONS.get(token.value,0)>time.time())
+            session = SESSIONS.get(token.value) if token else None
+        if not session or session['expires'] <= time.time(): return False
+        user = auth.get(DATA, session['user_id'])
+        if not user or not user['enabled'] or user['version'] != session['version']: return False
+        self.user = user
+        return True
     def do_GET(self): self.handle_request('GET')
     def do_POST(self): self.handle_request('POST')
     def do_PUT(self): self.handle_request('PUT')
     def do_DELETE(self): self.handle_request('DELETE')
     def handle_request(self,method):
+        token=CURRENT_USER.set(1)
+        try: self.dispatch(method)
+        finally: CURRENT_USER.reset(token)
+    def dispatch(self,method):
         from urllib.parse import urlsplit,parse_qs
         url=urlsplit(self.path)
         path=url.path
@@ -365,17 +382,34 @@ class Handler(BaseHTTPRequestHandler):
                     ATTEMPTS[ip]=[t for t in ATTEMPTS.get(ip,[]) if t>now-300]
                     if len(ATTEMPTS[ip])>=10: return self.send(429,{'error':'Too many attempts. Try again in five minutes.'})
                     ATTEMPTS[ip].append(now)
-                if not PASSWORD or not hmac.compare_digest(str(data.get('password','')).encode(),PASSWORD.encode()):
-                    return self.send(401,{'error':'Incorrect password.'})
+                user=auth.authenticate(DATA,data.get('username'),data.get('password'))
+                if not user:
+                    return self.send(401,{'error':'Incorrect username or password.'})
+                CURRENT_USER.set(user['id'])
+                init()
                 token=secrets.token_urlsafe(32)
                 with LOCK:
                     for old in list(SESSIONS):
-                        if SESSIONS[old]<now: del SESSIONS[old]
-                    SESSIONS[token]=now+43200
+                        if SESSIONS[old]['expires']<now: del SESSIONS[old]
+                    SESSIONS[token]={'user_id':user['id'],'version':user['version'],'expires':now+43200}
                     ATTEMPTS.pop(ip,None)
                 secure='; Secure' if os.environ.get('COOKIE_SECURE')=='true' else ''
                 return self.send(200,{'ok':True},cookie=f'session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}')
             if not self.authenticated(): return self.send(401,{'error':'Please sign in.'})
+            CURRENT_USER.set(self.user['id'])
+            if path=='/api/password' and method=='POST':
+                auth.change_password(DATA,self.user['id'],data.get('current_password'),data.get('new_password'))
+                return self.send(200,{'ok':True},cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+            if path=='/api/users' or path.startswith('/api/users/'):
+                if not self.user['is_admin']: return self.send(403,{'error':'Administrator access required.'})
+                if path=='/api/users' and method=='GET': return self.send(200,{'users':auth.list_users(DATA)})
+                if path=='/api/users' and method=='POST':
+                    created=auth.create(DATA,data.get('username'),data.get('password'))
+                    return self.send(200,{'user':created})
+                if path.startswith('/api/users/') and method=='POST':
+                    auth.manage(DATA,int(path.rsplit('/',1)[1]),data.get('action'),data.get('password'))
+                    return self.send(200,{'ok':True})
+                return self.send(404,{'error':'Not found.'})
             if path=='/api/logout' and method=='POST':
                 ck=SimpleCookie(self.headers.get('Cookie',''))
                 with LOCK: SESSIONS.pop(ck['session'].value,None)
@@ -383,7 +417,7 @@ class Handler(BaseHTTPRequestHandler):
             with db() as c:
                 if path=='/api/state' and method=='GET':
                     accounts=[dict(r) for r in c.execute('SELECT a.*, a.opening+COALESCE(SUM(t.amount),0) balance FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id GROUP BY a.id ORDER BY a.name')]
-                    return self.send(200,dict(currency=CURRENCY,accounts=accounts,categories=[dict(r) for r in c.execute('SELECT * FROM categories ORDER BY name')],profiles=[dict(name=r['name'],mapping=json.loads(r['mapping'])) for r in c.execute('SELECT * FROM profiles ORDER BY name')],rules=[dict(r) for r in c.execute('SELECT r.*, c.name category FROM rules r JOIN categories c ON c.id=r.category_id ORDER BY r.id')]))
+                    return self.send(200,dict(user=self.user,currency=CURRENCY,accounts=accounts,categories=[dict(r) for r in c.execute('SELECT * FROM categories ORDER BY name')],profiles=[dict(name=r['name'],mapping=json.loads(r['mapping'])) for r in c.execute('SELECT * FROM profiles ORDER BY name')],rules=[dict(r) for r in c.execute('SELECT r.*, c.name category FROM rules r JOIN categories c ON c.id=r.category_id ORDER BY r.id')]))
                 if path=='/api/month' and method=='GET':
                     month=parse_qs(url.query).get('month',[date.today().strftime('%Y-%m')])[0]
                     report=summary(c,month)
@@ -404,6 +438,27 @@ class Handler(BaseHTTPRequestHandler):
                     name=clean(data.get('name'),80)
                     if not name: raise Invalid('Enter a category name.')
                     c.execute('INSERT INTO categories(name) VALUES (?)',(name,))
+                elif path.startswith('/api/categories/') and method in ('PUT','DELETE'):
+                    key=int(path.rsplit('/',1)[1])
+                    existing(c,'categories',key)
+                    if method=='PUT':
+                        name=clean(data.get('name'),80)
+                        if not name: raise Invalid('Enter a category name.')
+                        c.execute('UPDATE categories SET name=? WHERE id=?',(name,key))
+                    else:
+                        c.execute('BEGIN IMMEDIATE')
+                        tx_count=c.execute('SELECT COUNT(*) FROM transactions WHERE category_id=?',(key,)).fetchone()[0]
+                        rule_count=c.execute('SELECT COUNT(*) FROM rules WHERE category_id=?',(key,)).fetchone()[0]
+                        if (tx_count or rule_count) and 'replacement_id' not in data:
+                            raise Invalid('Choose where to move the transactions and merchant rules.')
+                        replacement=int(data['replacement_id']) if data.get('replacement_id') else None
+                        if replacement==key: raise Invalid('Choose a different replacement category.')
+                        if replacement: existing(c,'categories',replacement)
+                        if rule_count and replacement is None:
+                            raise Invalid('This category has merchant rules. Choose a replacement category or remove those rules first.')
+                        c.execute('UPDATE transactions SET category_id=? WHERE category_id=?',(replacement,key))
+                        if replacement: c.execute('UPDATE rules SET category_id=? WHERE category_id=?',(replacement,key))
+                        c.execute('DELETE FROM categories WHERE id=?',(key,))
                 elif path=='/api/rules' and method=='POST':
                     value=clean(data.get('contains_text'),100).casefold()
                     if not value: raise Invalid('Enter merchant text.')
@@ -476,7 +531,8 @@ if __name__=='__main__':
     if len(PASSWORD)<12:
         raise SystemExit('Set APP_PASSWORD to at least 12 characters before starting.')
     init()
+    auth.init(DATA,PASSWORD,ADMIN_USERNAME)
     server=ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8080'))),Handler)
     server.timeout=30
-    print('Monthly Spend listening on port '+str(server.server_port),flush=True)
+    print('Spearmint listening on port '+str(server.server_port),flush=True)
     server.serve_forever()

@@ -126,6 +126,7 @@ class CategorizationTests(DatabaseFixture):
 class HttpTests(DatabaseFixture):
     def test_login_crud_transfer_export_and_persistence(self):
         app.PASSWORD='test-password-long'
+        app.auth.init(app.DATA,app.PASSWORD)
         app.SESSIONS.clear();app.ATTEMPTS.clear()
         server=app.ThreadingHTTPServer(('127.0.0.1',0),app.Handler)
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
@@ -144,8 +145,8 @@ class HttpTests(DatabaseFixture):
             except ValueError:return status,raw.decode()
         try:
             self.assertEqual(request('/api/state')[0],401)
-            self.assertEqual(request('/api/login','POST',{'password':app.PASSWORD},False)[0],403)
-            self.assertEqual(request('/api/login','POST',{'password':app.PASSWORD})[0],200)
+            self.assertEqual(request('/api/login','POST',{'username':'admin','password':app.PASSWORD},False)[0],403)
+            self.assertEqual(request('/api/login','POST',{'username':'admin','password':app.PASSWORD})[0],200)
             tx={'account_id':1,'date':'2026-08-12','payee':'Visa payment','amount':'20.00','kind':'transfer','destination_id':2}
             self.assertEqual(request('/api/transactions','POST',tx)[0],200)
             s=request('/api/month?month=2026-08')[1]
