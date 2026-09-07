@@ -55,7 +55,7 @@ jobs:
           images: ghcr.io/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=raw,value=0.3.0
+            type=raw,value=0.3.1
             type=sha
 
       - uses: docker/build-push-action@v6

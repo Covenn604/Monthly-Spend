@@ -9,7 +9,7 @@ const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.get
 $('#month').value=localDay().slice(0,7);
 function clearPrivateState(){
  state=null;report=null;allTransactions=[];csvText='';csvHeaders=[];importPreview=null;selectedTransactions.clear();scopeRequest++;
- for(const id of ['tx-body','review-body','import-result','account-list','category-chips','rules-list','users-list','category-list','insights','trend','profile-identity'])$('#'+id).replaceChildren();
+ for(const id of ['tx-body','review-body','import-result','account-list','category-chips','rules-list','users-list','category-list','insights','trend','overview-balances','profile-identity'])$('#'+id).replaceChildren();
  for(const id of ['tx-form','account-form','category-form','rule-form','password-form','user-form','manage-user-form','category-edit-form','category-delete-form'])$('#'+id).reset();
  $('#csv-file').value='';$('#profile-name').value='';$('#mapping').hidden=true;$('#review').hidden=true;$('#user-admin').hidden=true;
  $('#transaction-scope').value='month';$('#show-completed').checked=false;$('#search').value='';$('#category-filter').value='';
@@ -32,9 +32,13 @@ function renderState(){
  $('#category-chips').innerHTML=state.categories.map(c=>`<button class="chip secondary" data-edit-category="${c.id}" aria-label="Edit ${esc(c.name)}">${esc(c.name)} · Edit</button>`).join('');
  $('#rules-list').innerHTML=state.rules.map(r=>`<div class="rule-row"><span><strong>${esc(r.contains_text)}</strong> → ${esc(r.category)}</span><button class="secondary" data-delete-rule="${r.id}">Remove</button></div>`).join('');
 }
+function renderAccountBalances(){
+ $('#overview-balances').innerHTML=state.accounts.length?state.accounts.map(a=>`<article class="balance-card"><h3>${esc(a.name)}</h3><strong class="balance-value ${a.balance<0?'up':''}">${money(a.balance)}</strong><dl><div><dt>Opening balance</dt><dd>${money(a.opening)}</dd></div><div><dt>Recorded activity</dt><dd>${money(a.balance-a.opening)}</dd></div></dl></article>`).join(''):'<p class="empty">No accounts yet. Add an account in Accounts & categories to see its balance here.</p>';
+}
 function renderOverview(){
+ renderAccountBalances();
  $('#income').textContent=money(report.income);$('#expenses').textContent=money(report.expenses);$('#remaining').textContent=money(Math.abs(report.remaining));$('#remaining-label').textContent=report.remaining>=0?'Left over':'Over income';$('.emphasis').classList.toggle('deficit',report.remaining<0);$('#remaining-note').textContent=report.remaining>=0?'Income minus expenses · before upcoming bills':'Expenses exceed recorded income';
- $('#overview-note').textContent=report.partial?`Through day ${report.day}. Future-dated entries are excluded from this overview. Transfers are excluded from income and expenses.`:'Recorded transactions for this month. Transfers are excluded from income and expenses.';
+ $('#overview-note').textContent=report.partial?`Through day ${report.day}. Future-dated entries are excluded from the monthly income and expense figures. Transfers are excluded from income and expenses.`:'Recorded transactions for this month. Transfers are excluded from income and expenses.';
  const max=Math.max(...report.categories.map(c=>c.spent),1);
  $('#category-list').innerHTML=report.categories.length?report.categories.map(c=>`<button class="category-row" data-category="${c.id??'none'}"><div class="category-top"><span>${esc(c.name)}</span><span>${money(c.spent)}</span></div><div class="track"><div class="fill" style="width:${Math.max(0,c.spent)/max*100}%"></div></div><div class="category-bottom"><span>${report.expenses>0&&c.spent>=0?Math.round(c.spent/report.expenses*100)+'% of net expenses':'Net expenses after refunds'}</span><span class="${c.difference>0?'up':c.difference<0?'down':''}">${c.average===null?'No comparison yet':money(Math.abs(c.difference))+(c.difference>0?' above usual':c.difference<0?' below usual':' change')}</span></div></button>`).join(''):'<div class="empty">No expenses recorded for this month. Add a transaction or import a statement to see where your money goes.</div>';
  $('#comparison-note').textContent=report.periods.length?`Compared with ${report.periods.length} prior calendar month(s): ${report.periods.join(', ')}${report.partial?`, through day ${report.day}`:''}. Based on imported history; incomplete records affect averages.`:'Import earlier months to establish your usual spending. Above usual means an increase, not necessarily unaffordable spending.';
