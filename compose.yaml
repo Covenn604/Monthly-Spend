@@ -1,7 +1,6 @@
 services:
   monthly-spend:
-    build: .
-    image: monthly-spend:0.1.0
+    image: ${APP_IMAGE:-ghcr.io/covenn604/monthly-spend:latest}
     container_name: monthly-spend
     restart: unless-stopped
     ports:

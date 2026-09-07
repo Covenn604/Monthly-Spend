@@ -17,18 +17,24 @@ cp .env.example .env
 Edit `.env` and set `APP_PASSWORD` to a unique password of at least 12 characters. Do not commit this file. Then:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with that password. The first Docker build needs access to Docker Hub for the Python base image. The application has no third-party Python or JavaScript dependencies.
+Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with that password. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-This version builds its image locally. There is **no published GHCR image** to pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.1.0`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+
+Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `monthly-spend` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
+
+To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_IMAGE=monthly-spend:local` in `.env`, and run `docker compose up -d` without the pull step.
 
 ### Settings
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Shared household password, at least 12 characters. |
+| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.1.0` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `CURRENCY` | `CAD` | Display currency, e.g. CAD or USD. All accounts must use the same currency; no exchange conversion. Choose before entering data. |
 | `TZ` | `America/Vancouver` | Server timezone used for the current reporting day. |
@@ -38,7 +44,7 @@ The database is `/data/monthly-spend.sqlite3` inside the container, persisted in
 
 ### Portainer
 
-Build the image on the Docker endpoint that Portainer manages first, using the Compose instructions above or `docker build -t monthly-spend:0.1.0 .`. For a Portainer web-editor stack, paste `compose.yaml` and remove the `build: .` line; the local image must already exist on that endpoint. Set `APP_PASSWORD` in the stack environment. Alternatively deploy from this Git repository if your Portainer installation supports repository builds. Do not paste the stack into a different endpoint and expect the locally built image to exist there.
+After the first successful publish, open **Stacks → Add stack** and paste `compose.yaml`. Set `APP_PASSWORD` in the stack environment, then deploy. No local build is required. If the GHCR package is private, configure registry credentials in Portainer first, or make the package public for unauthenticated pulls. To update, redeploy the same stack with the option to pull the image again enabled, keeping its data volume unchanged.
 
 ## First use
 
@@ -120,7 +126,8 @@ To update after taking a backup:
 
 ```bash
 git pull --ff-only
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Do not run `docker compose down -v` unless you intend to delete your data. The initial schema is created automatically; future releases that change it will need migration handling.
@@ -142,4 +149,4 @@ python -m unittest discover -s tests -v
 node --check static/app.js
 ```
 
-Tests cover integer-money parsing, refunds/transfers, historical and partial-month comparisons, CSV mapping, duplicate selection and replay protection, atomic rollback, login, CRUD, exports, and persistence. GitHub Actions also builds and smoke-tests the Docker image. No sample statements or personal financial data are committed.
+Tests cover integer-money parsing, refunds/transfers, historical and partial-month comparisons, CSV mapping, duplicate selection and replay protection, atomic rollback, login, CRUD, exports, and persistence. `checks.yml` builds and smoke-tests the Docker image; `docker-publish.yml` separately runs the Python tests and JavaScript check before building and publishing to GHCR. No sample statements or personal financial data are committed.
