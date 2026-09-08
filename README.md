@@ -4,7 +4,7 @@
 
 Inspired by Mint. An independent, self-hosted spending tracker focused on understanding your monthly expenses. Spearmint is not affiliated with Intuit. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
 
-**Version 0.4.3 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+**Version 0.4.4 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
 
 ## Run with Docker Compose
 
@@ -25,7 +25,7 @@ docker compose up -d
 
 Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with username **admin** (or your configured `ADMIN_USERNAME`) and that password on first setup. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/spearmint` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.3`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/spearmint` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.4`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
 
 Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `spearmint` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
 
@@ -37,7 +37,7 @@ To build locally instead, run `docker build -t spearmint:local .`, set `APP_IMAG
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password, at least 12 characters. Used only when the user database is first created. Changing it later does not reset a stored password. |
 | `ADMIN_USERNAME` | `admin` | Initial administrator username; used only on first multi-user startup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Container image. Use `:0.4.3` for the current version tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Container image. Use `:0.4.4` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `PUID` | `10001` | Numeric UID used to run the container process. |
 | `PGID` | `10001` | Numeric primary GID used to run the container process. |
@@ -260,8 +260,14 @@ Tests cover integer-money parsing, refunds/transfers, historical and partial-mon
 
 ## v0.4.2 changes
 
-CSV import supports skipped introductory lines and additional date formats. Only selected date, description, and amount/debit/credit fields are imported. Sign reversal remains an explicit user choice. Account-to-profile automatic selection remains queued separately in issue #4.
+CSV import supports skipped introductory lines and additional date formats. Only selected date, description, and amount/debit/credit fields are imported. Sign reversal remains an explicit user choice. Account-to-profile automatic selection was added in v0.4.4.
 
 ## v0.4.3 changes
 
 CSV imports automatically decode UTF-16 statements and support dates such as `07 Sep 2026`. Existing column mappings and amount-sign choices are preserved.
+
+## v0.4.4 changes
+
+Saved CSV formats can be renamed or deleted without uploading a file. To edit a mapping, select it, upload a CSV, adjust the fields, and choose **Update selected format**. **Save new format** creates a separate format and makes it the selected account's default; existing names cannot be overwritten accidentally.
+
+Each account automatically loads its associated format, including separators, header lines, date format, columns, and amount settings. For existing formats, select the account and format, then choose **Use as account default** once. Temporary manual format selections do not change that association. Renaming preserves account associations; deleting a format clears them without changing transactions. **Clear account default** removes just the association. Accounts without a default start with fresh settings. Formats and account defaults remain private to each user.

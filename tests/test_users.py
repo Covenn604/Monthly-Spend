@@ -132,3 +132,40 @@ class MultiUserTests(unittest.TestCase):
             self.assertEqual(self.req('/api/categories/'+str(cat['id']),'DELETE',{},'alice')[0],200)
         self.login('alice',USER_PASSWORD)
         self.assertEqual(self.req('/api/state',who='alice')[1]['categories'],[])
+
+    def test_profile_management_defaults_and_isolation(self):
+        before=self.req('/api/transactions')[1]
+        # Existing mappings survive the new association table migration.
+        with app.db() as c:
+            c.execute("INSERT INTO profiles VALUES ('Legacy',?)",(json.dumps({'invert':True}),))
+        app.init()
+        self.assertEqual(self.req('/api/state')[1]['profiles'][0]['mapping'],{'invert':True})
+        self.assertEqual(self.req('/api/profile-default','PUT',{'account_id':1,'name':'Legacy'})[0],200)
+        for i in range(2,6):
+            self.assertEqual(self.req('/api/accounts','POST',{'name':f'Account {i}','opening':'0'})[0],200)
+        for i in range(1,6):
+            self.assertEqual(self.req('/api/profiles','POST',{'name':f'Format {i}','mapping':{'invert':i%2==0,'skip_lines':i},'account_id':i})[0],200)
+        self.login('admin',PASSWORD)
+        current=self.req('/api/state')[1]
+        self.assertEqual({a['id']:a['default_profile'] for a in current['accounts']},{i:f'Format {i}' for i in range(1,6)})
+        self.assertEqual(self.req('/api/profiles','POST',{'name':'Format 1','mapping':{}})[0],400)
+        self.assertEqual(self.req('/api/profiles','PUT',{'original_name':'Format 1','name':'Format 2'})[0],400)
+        self.assertEqual(self.req('/api/profiles','PUT',{'original_name':'Format 1','name':'Renamed'})[0],200)
+        current=self.req('/api/state')[1]
+        self.assertEqual(next(a for a in current['accounts'] if a['id']==1)['default_profile'],'Renamed')
+        self.assertEqual(next(p for p in current['profiles'] if p['name']=='Renamed')['mapping']['skip_lines'],1)
+        self.assertEqual(self.req('/api/profiles','PUT',{'original_name':'Renamed','name':'Renamed','mapping':{'date_format':'compact'}})[0],200)
+        self.add_user()
+        self.assertEqual(self.req('/api/profiles','DELETE',{'name':'Renamed'},'alice')[0],400)
+        self.assertEqual(self.req('/api/profile-default','PUT',{'account_id':1,'name':'Renamed'},'alice')[0],400)
+        self.assertEqual(self.req('/api/profiles','POST',{'name':'Renamed','mapping':{}},'alice')[0],200)
+        self.assertEqual(self.req('/api/profiles','DELETE',{'name':'Renamed'},'alice')[0],200)
+        self.assertEqual(self.req('/api/profiles','DELETE',{'name':'Renamed'})[0],200)
+        current=self.req('/api/state')[1]
+        self.assertIsNone(next(a for a in current['accounts'] if a['id']==1)['default_profile'])
+        self.assertEqual(next(a for a in current['accounts'] if a['id']==2)['default_profile'],'Format 2')
+        self.assertEqual(self.req('/api/profile-default','PUT',{'account_id':2,'name':None})[0],200)
+        self.assertEqual(self.req('/api/profile-default','PUT',{'account_id':2,'name':'missing'})[0],400)
+        self.assertEqual(self.req('/api/profiles','POST',{'name':'Invalid account','mapping':{},'account_id':9999})[0],400)
+        self.assertFalse(any(p['name']=='Invalid account' for p in self.req('/api/state')[1]['profiles']))
+        self.assertEqual(self.req('/api/transactions')[1],before)

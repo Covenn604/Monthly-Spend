@@ -17,7 +17,7 @@ jobs:
           node-version: '24'
       - run: python -m unittest discover -s tests -v
       - run: node --check static/app.js
-      - run: node --test tests/test_csv_reader.js
+      - run: node --test tests/test_csv_*.js
       - run: docker build -t monthly-spend:test .
       - name: Check container startup and data volume
         run: |

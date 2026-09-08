@@ -2,12 +2,13 @@
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state, report, csvText='', csvHeaders=[], importPreview=null, view='overview', noticeTimer;
-let allTransactions=[], selectedTransactions=new Set(), scopeRequest=0, headerRequest=0;
+let allTransactions=[], selectedTransactions=new Set(), scopeRequest=0, headerRequest=0, previewRequest=0, importProfileAccount=null;
 function transactionRows(){return $('#transaction-scope').value==='all'?allTransactions:(report?.transactions||[]);}
 function syncMonthControl(){$('#month').disabled=view==='transactions'&&$('#transaction-scope').value==='all';}
 const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 $('#month').value=localDay().slice(0,7);
 function clearPrivateState(){
+ importProfileAccount=null;++previewRequest;
  state=null;report=null;allTransactions=[];csvText='';csvHeaders=[];importPreview=null;selectedTransactions.clear();scopeRequest++;headerRequest++;
  for(const id of ['tx-body','review-body','import-result','account-list','category-chips','rules-list','users-list','category-list','insights','trend','overview-balances','profile-identity'])$('#'+id).replaceChildren();
  for(const id of ['tx-form','account-form','category-form','rule-form','password-form','user-form','manage-user-form','category-edit-form','category-delete-form','account-edit-form'])$('#'+id).reset();
@@ -20,7 +21,7 @@ async function api(path,method='GET',data){const response=await fetch(path,{meth
 function money(cents){return new Intl.NumberFormat('en-CA',{style:'currency',currency:state?.currency||'CAD'}).format(cents/100);}
 function opts(items,value='',blank='Choose…'){return `<option value="">${esc(blank)}</option>`+items.map(x=>`<option value="${esc(x.id)}" ${String(x.id)===String(value)?'selected':''}>${esc(x.name)}</option>`).join('');}
 function setView(name){view=name;document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!==name);document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('#page-title').textContent={overview:'Monthly overview',transactions:'Transactions',import:'Import transactions',accounts:'Accounts & categories',settings:'Profile & users'}[name];syncMonthControl();}
-async function refresh(){state=await api('/api/state');report=await api('/api/month?month='+encodeURIComponent($('#month').value));if($('#transaction-scope').value==='all')allTransactions=(await api('/api/transactions')).transactions;$('#login').hidden=true;$('#shell').hidden=false;renderState();renderOverview();renderTransactions();await renderUsers();}
+async function refresh(){state=await api('/api/state');report=await api('/api/month?month='+encodeURIComponent($('#month').value));if($('#transaction-scope').value==='all')allTransactions=(await api('/api/transactions')).transactions;$('#login').hidden=true;$('#shell').hidden=false;renderState();renderOverview();renderTransactions();await renderUsers();if(importProfileAccount!==$('#import-account').value)await selectAccountProfile();else updateProfileControls();}
 function renderState(){
  $('#currency-note').textContent=`${state.user.username} · ${state.currency}`;
  for(const id of ['tx-account','tx-destination','import-account']){const el=$('#'+id),old=el.value;el.innerHTML=opts(state.accounts,old);if(!el.value&&state.accounts.length)el.value=state.accounts[0].id;}
@@ -54,11 +55,35 @@ function renderTransactions(){selectedTransactions.clear();const cleanup=$('#tra
 function txType(){const editing=!!$('#tx-form').elements.id.value,transfer=$('#tx-kind').value==='transfer';$('#destination-label').hidden=!transfer||editing;$('#tx-cat-label').hidden=['income','transfer'].includes($('#tx-kind').value);$('#tx-help').textContent=transfer?(editing?'This edits one imported transfer row. Keep its signed amount; mark the counterpart on the other account as a transfer too.':'A transfer creates linked entries in both accounts and is excluded from spending. Enter a positive amount leaving the source account.'):'Enter a positive amount. Refunds reduce spending in the selected category.';}
 function openTransaction(id){if(!state.accounts.length){setView('accounts');notify('Add an account first.');return;}const form=$('#tx-form');form.reset();form.elements.id.value='';form.elements.date.value=localDay();form.elements.account_id.value=state.accounts[0].id;$('#tx-title').textContent=id?'Edit transaction':'Add transaction';if(id){const tx=transactionRows().find(t=>t.id===id);for(const key of ['id','date','account_id','kind','payee','category_id','note'])form.elements[key].value=tx[key]??'';form.elements.amount.value=((tx.kind==='transfer'?tx.amount:Math.abs(tx.amount))/100).toFixed(2);}txType();$('#tx-dialog').showModal();}
 function mapping(){const m={skip_lines:Number($('#skip-lines').value),delimiter:$('#delimiter').value,date_format:$('#date-format').value,mode:$('#amount-mode').value,invert:$('#invert').checked,decimal_comma:$('#decimal-comma').checked};for(const k of ['date','payee','amount','debit','credit'])m[k]=$('#map-'+k).value;return m;}
-function invalidatePreview(){importPreview=null;$('#review').hidden=true;}
+function invalidatePreview(){++previewRequest;importPreview=null;$('#review').hidden=true;}
 async function loadHeaders(){if(!csvText)return;const request=++headerRequest;invalidatePreview();$('#mapping').hidden=true;const {headers}=await api('/api/csv/headers','POST',{text:csvText,delimiter:$('#delimiter').value,skip_lines:Number($('#skip-lines').value)});if(request!==headerRequest)return;csvHeaders=headers;for(const key of ['date','payee','amount','debit','credit']){$('#map-'+key).innerHTML='<option value="">Not mapped</option>'+headers.map((h,i)=>`<option value="${i}">${i+1}: ${esc(h)}</option>`).join('');const patterns={date:/^date$|transaction date/i,payee:/payee|description|merchant/i,amount:/^(transaction )?amount$/i,debit:/debit|withdrawal/i,credit:/credit|deposit/i};const idx=headers.findIndex(h=>patterns[key].test(h));if(idx>=0)$('#map-'+key).value=idx;}$('#mapping').hidden=false;applyProfile();}
+function updateProfileControls(){
+ const selected=state.profiles.find(p=>p.name===$('#profile').value);
+ const account=state.accounts.find(a=>String(a.id)===$('#import-account').value);
+ for(const id of ['rename-profile','delete-profile','update-profile'])$('#'+id).disabled=!selected;
+ $('#default-profile').disabled=!selected||!account||account.default_profile===selected.name;
+ $('#clear-default-profile').disabled=!account?.default_profile;
+ $('#profile-default-note').textContent=account?.default_profile?`Default for ${account.name}: ${account.default_profile}`:'No default format for this account. Save a new format or choose one and use it as the account default.';
+}
+async function selectAccountProfile(){
+ importProfileAccount=$('#import-account').value;
+ const account=state.accounts.find(a=>String(a.id)===importProfileAccount);
+ $('#profile').value=state.profiles.some(p=>p.name===account?.default_profile)?account.default_profile:'';
+ await selectProfile();
+}
+async function selectProfile(){
+ ++headerRequest;invalidatePreview();
+ const m=state.profiles.find(p=>p.name===$('#profile').value)?.mapping||{};
+ $('#delimiter').value=m.delimiter||',';$('#skip-lines').value=m.skip_lines||0;
+ $('#date-format').value=m.date_format||'iso';$('#amount-mode').value=m.mode||'signed';
+ $('#invert').checked=!!m.invert;$('#decimal-comma').checked=!!m.decimal_comma;
+ for(const key of ['date','payee','amount','debit','credit'])$('#map-'+key).value=m[key]??'';
+ updateProfileControls();
+ if(csvText)await loadHeaders();
+}
 function applyProfile(){const profile=state.profiles.find(p=>p.name===$('#profile').value);if(!profile)return;const m=profile.mapping;for(const key of ['date','payee','amount','debit','credit'])$('#map-'+key).value=m[key]??'';$('#date-format').value=m.date_format||'iso';$('#amount-mode').value=m.mode||'signed';$('#invert').checked=!!m.invert;$('#decimal-comma').checked=!!m.decimal_comma;}
 function renderPreview(){const rows=importPreview.rows;$('#review').hidden=false;$('#review-note').textContent=`${rows.length} rows · ${rows.filter(r=>r.status==='new').length} new · ${rows.filter(r=>r.status==='possible').length} possible duplicates · ${rows.filter(r=>r.status==='duplicate'||r.status==='invalid').length} excluded. Review positive amounts for refunds and transfers.`;$('#review-body').innerHTML=rows.map(r=>r.tx?`<tr data-index="${r.index}"><td><input type="checkbox" aria-label="Include row ${r.line}" class="include-row" ${r.status==='new'?'checked':''} ${r.status==='duplicate'?'disabled':''}></td><td>${esc(r.tx.date)}<small>${esc(r.tx.payee)}</small></td><td class="number">${money(r.tx.amount)}</td><td><select class="import-kind" aria-label="Type for row ${r.line}">${(r.tx.amount<0?['expense','transfer']:['income','refund','transfer']).map(k=>`<option value="${k}">${k}</option>`).join('')}</select></td><td><select class="import-category" aria-label="Category for row ${r.line}">${opts(state.categories,r.tx.category_id,'Uncategorized')}</select></td><td><span class="badge">${esc(r.status)}</span></td></tr>`:`<tr><td>—</td><td>Row ${r.line}</td><td colspan="4">${esc(r.error)}</td></tr>`).join('');}
-async function task(fn,button){if(button)button.disabled=true;try{await fn();}catch(e){notify(e.message);}finally{if(button)button.disabled=false;}}
+async function task(fn,button){if(button)button.disabled=true;try{await fn();}catch(e){notify(e.message);}finally{if(button)button.disabled=false;if(state&&button?.id?.includes('profile'))updateProfileControls();}}
 function updateSelection(){
  const eligible=[...$('#tx-body').querySelectorAll('[data-select]:not(:disabled)')];
  $('#selection-count').textContent=`${selectedTransactions.size} selected`;
@@ -127,10 +152,39 @@ $('#category-edit-form').onsubmit=e=>{e.preventDefault();task(async()=>{const da
 $('#category-delete-form').onsubmit=e=>{e.preventDefault();task(async()=>{const id=$('#category-edit-form').elements.id.value,replacement=$('#replacement-category').value;if(!confirm('Delete this category and move its transactions and rules to the selected destination?'))return;await api('/api/categories/'+id,'DELETE',{replacement_id:replacement?Number(replacement):null});$('#category-dialog').close();invalidatePreview();await refresh();notify('Category deleted. Transactions were kept.');},e.submitter);};
 $('#rules-list').onclick=e=>{const b=e.target.closest('[data-delete-rule]');if(b)task(async()=>{await api('/api/rules/'+b.dataset.deleteRule,'DELETE',{});await refresh();});};
 $('#csv-file').onchange=()=>task(async()=>{const file=$('#csv-file').files[0];if(!file)return;if(file.size>2_000_000)throw Error('Use a CSV smaller than 2 MB.');const request=++headerRequest;invalidatePreview();csvText='';$('#mapping').hidden=true;const text=decodeCsvBytes(await file.arrayBuffer());if(request!==headerRequest)return;csvText=text;await loadHeaders();});
-$('#delimiter').onchange=()=>task(loadHeaders);$('#skip-lines').onchange=()=>task(loadHeaders);$('#profile').onchange=()=>task(async()=>{const p=state.profiles.find(p=>p.name===$('#profile').value);if(p){$('#delimiter').value=p.mapping.delimiter||',';$('#skip-lines').value=p.mapping.skip_lines||0;applyProfile();}if(csvText)await loadHeaders();});
-$('#mapping').addEventListener('change',invalidatePreview);$('#import-account').onchange=invalidatePreview;
-$('#save-profile').onclick=e=>task(async()=>{await api('/api/profiles','POST',{name:$('#profile-name').value,mapping:mapping()});await refresh();notify('CSV format saved.');},e.currentTarget);
-$('#preview-csv').onclick=e=>task(async()=>{importPreview=await api('/api/csv/preview','POST',{text:csvText,account_id:$('#import-account').value,mapping:mapping()});renderPreview();},e.currentTarget);
+$('#delimiter').onchange=()=>task(loadHeaders);$('#skip-lines').onchange=()=>task(loadHeaders);
+$('#profile').onchange=()=>task(selectProfile);
+$('#mapping').addEventListener('change',invalidatePreview);
+$('#import-account').onchange=()=>task(selectAccountProfile);
+$('#save-profile').onclick=e=>task(async()=>{
+ const name=$('#profile-name').value.trim();
+ await api('/api/profiles','POST',{name,mapping:mapping(),account_id:$('#import-account').value});
+ invalidatePreview();await refresh();$('#profile').value=name;$('#profile-name').value='';updateProfileControls();notify('CSV format saved as this account’s default.');
+},e.currentTarget);
+$('#update-profile').onclick=e=>task(async()=>{
+ const name=$('#profile').value;if(!name)return;
+ await api('/api/profiles','PUT',{original_name:name,name,mapping:mapping()});
+ invalidatePreview();await refresh();notify('Saved format updated.');
+},e.currentTarget);
+$('#rename-profile').onclick=e=>task(async()=>{
+ const original=$('#profile').value;if(!original)return;
+ const name=prompt('New name for this saved format:',original);if(name===null)return;
+ await api('/api/profiles','PUT',{original_name:original,name});
+ invalidatePreview();await refresh();$('#profile').value=name.trim();updateProfileControls();notify('Saved format renamed.');
+},e.currentTarget);
+$('#delete-profile').onclick=e=>task(async()=>{
+ const name=$('#profile').value;if(!name||!confirm(`Delete saved format “${name}”? Accounts using it will have no default format. Imported transactions will be kept.`))return;
+ await api('/api/profiles','DELETE',{name});invalidatePreview();await refresh();await selectAccountProfile();notify('Saved format deleted.');
+},e.currentTarget);
+$('#default-profile').onclick=e=>task(async()=>{
+ await api('/api/profile-default','PUT',{account_id:$('#import-account').value,name:$('#profile').value});
+ invalidatePreview();await refresh();notify('Default CSV format saved for this account.');
+},e.currentTarget);
+$('#clear-default-profile').onclick=e=>task(async()=>{
+ await api('/api/profile-default','PUT',{account_id:$('#import-account').value,name:null});
+ invalidatePreview();await refresh();await selectAccountProfile();notify('Account default cleared.');
+},e.currentTarget);
+$('#preview-csv').onclick=e=>task(async()=>{const request=++previewRequest;const result=await api('/api/csv/preview','POST',{text:csvText,account_id:$('#import-account').value,mapping:mapping()});if(request!==previewRequest)return;importPreview=result;renderPreview();},e.currentTarget);
 $('#commit-csv').onclick=e=>task(async()=>{if(!importPreview)throw Error('Preview the file again.');const selected=[...$('#review-body').querySelectorAll('tr[data-index]')].filter(tr=>tr.querySelector('.include-row').checked).map(tr=>({index:Number(tr.dataset.index),kind:tr.querySelector('.import-kind').value,category_id:tr.querySelector('.import-category').value,allow_possible:importPreview.rows[Number(tr.dataset.index)].status==='possible'}));if(!selected.length)throw Error('Select at least one row.');if(!confirm(`Import ${selected.length} transactions into ${state.accounts.find(a=>String(a.id)===$('#import-account').value)?.name}? Selected possible duplicates will be added as separate transactions.`))return;const result=await api('/api/csv/commit','POST',{token:importPreview.token,selected});invalidatePreview();$('#import-result').innerHTML=`<div class="panel"><strong>${result.imported} transactions imported.</strong> <button class="secondary" id="undo-import">Undo this import</button></div>`;$('#undo-import').onclick=()=>{if(confirm('Remove all transactions from this import, including any later edits to them?'))task(async()=>{await api('/api/imports/'+result.batch_id,'DELETE',{});$('#import-result').replaceChildren();await refresh();notify('Import undone.');});};await refresh();notify('Import complete. Choose the statement month to view it.');},e.currentTarget);
 $('#export').onclick=()=>task(async()=>{const response=await fetch('/api/export');if(!response.ok)throw Error('Please sign in again to export.');const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='spearmint-transactions.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 refresh().catch(e=>{if(e.message!=='Please sign in.')notify(e.message);});

@@ -64,10 +64,24 @@ def init():
         CREATE INDEX IF NOT EXISTS tx_date ON transactions(date);
         CREATE TABLE IF NOT EXISTS previews(id TEXT PRIMARY KEY, created REAL NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS profiles(name TEXT PRIMARY KEY, mapping TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS account_profiles(
+          account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+          profile_name TEXT NOT NULL REFERENCES profiles(name) ON UPDATE CASCADE ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS rules(id INTEGER PRIMARY KEY, contains_text TEXT NOT NULL UNIQUE, category_id INTEGER NOT NULL REFERENCES categories(id));
         ''')
         if fresh_categories:
             c.executemany('INSERT INTO categories(name) VALUES (?)', [(v,) for v in ['Housing','Groceries','Dining out','Transportation','Utilities','Shopping','Health','Entertainment','Subscriptions','Travel','Other']])
+
+def set_profile_default(c,account_id,name):
+    if not c.execute('SELECT 1 FROM accounts WHERE id=?',(account_id,)).fetchone():
+        raise Invalid('Choose an existing account.')
+    if name is None or name=='':
+        c.execute('DELETE FROM account_profiles WHERE account_id=?',(account_id,))
+    else:
+        if not c.execute('SELECT 1 FROM profiles WHERE name=?',(name,)).fetchone():
+            raise Invalid('Choose an existing saved format.')
+        c.execute('INSERT INTO account_profiles VALUES (?,?) ON CONFLICT(account_id) DO UPDATE SET profile_name=excluded.profile_name',(account_id,name))
+    c.execute('DELETE FROM previews')
 
 def money(value, decimal_comma=False):
     raw = str(value).strip().replace('$','').replace(' ','').replace('\u00a0','')
@@ -439,7 +453,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200,{'ok':True},cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
             with db() as c:
                 if path=='/api/state' and method=='GET':
-                    accounts=[dict(r) for r in c.execute('SELECT a.*, a.opening+COALESCE(SUM(t.amount),0) balance FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id GROUP BY a.id ORDER BY a.name')]
+                    accounts=[dict(r) for r in c.execute('SELECT a.*, ap.profile_name default_profile, a.opening+COALESCE(SUM(t.amount),0) balance FROM accounts a LEFT JOIN account_profiles ap ON ap.account_id=a.id LEFT JOIN transactions t ON t.account_id=a.id GROUP BY a.id ORDER BY a.name')]
                     return self.send(200,dict(user=self.user,currency=CURRENCY,accounts=accounts,categories=[dict(r) for r in c.execute('SELECT * FROM categories ORDER BY name')],profiles=[dict(name=r['name'],mapping=json.loads(r['mapping'])) for r in c.execute('SELECT * FROM profiles ORDER BY name')],rules=[dict(r) for r in c.execute('SELECT r.*, c.name category FROM rules r JOIN categories c ON c.id=r.category_id ORDER BY r.id')]))
                 if path=='/api/month' and method=='GET':
                     month=parse_qs(url.query).get('month',[date.today().strftime('%Y-%m')])[0]
@@ -532,10 +546,31 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200,result)
                 elif path.startswith('/api/imports/') and method=='DELETE':
                     c.execute('DELETE FROM transactions WHERE batch_id=?',(path.rsplit('/',1)[1],))
-                elif path=='/api/profiles' and method=='POST':
+                elif path=='/api/profile-default' and method=='PUT':
+                    set_profile_default(c,data.get('account_id'),data.get('name'))
+                elif path=='/api/profiles' and method in ('POST','PUT','DELETE'):
                     name=clean(data.get('name'),80)
                     if not name: raise Invalid('Enter a profile name.')
-                    c.execute('INSERT INTO profiles VALUES (?,?) ON CONFLICT(name) DO UPDATE SET mapping=excluded.mapping',(name,json.dumps(data.get('mapping',{}))))
+                    original=clean(data.get('original_name'),80) if method=='PUT' else name
+                    if method!='POST' and not c.execute('SELECT 1 FROM profiles WHERE name=?',(original,)).fetchone():
+                        raise Invalid('Saved format no longer exists.')
+                    if method=='DELETE':
+                        c.execute('DELETE FROM profiles WHERE name=?',(name,))
+                    else:
+                        if (method=='POST' or name!=original) and c.execute('SELECT 1 FROM profiles WHERE name=?',(name,)).fetchone():
+                            raise Invalid('A saved format already has that name. Choose another name or update the existing format.')
+                        mapping=data.get('mapping')
+                        if method=='POST' or 'mapping' in data:
+                            if not isinstance(mapping,dict): raise Invalid('Provide a CSV mapping.')
+                        if method=='POST':
+                            c.execute('INSERT INTO profiles VALUES (?,?)',(name,json.dumps(mapping)))
+                            if data.get('account_id') is not None:
+                                set_profile_default(c,data['account_id'],name)
+                        elif 'mapping' in data:
+                            c.execute('UPDATE profiles SET name=?,mapping=? WHERE name=?',(name,json.dumps(mapping),original))
+                        else:
+                            c.execute('UPDATE profiles SET name=? WHERE name=?',(name,original))
+                    c.execute('DELETE FROM previews')
                 elif path=='/api/export' and method=='GET':
                     out=io.StringIO()
                     w=csv.writer(out)
