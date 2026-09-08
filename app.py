@@ -106,11 +106,23 @@ def existing(c, table, key):
     if not c.execute(f'SELECT 1 FROM {table} WHERE id=?', (key,)).fetchone():
         raise Invalid('Choose an existing ' + table[:-1] + '.')
 
-def category(c, payee):
-    for rule in c.execute('SELECT * FROM rules ORDER BY id'):
+def merchant_key(payee):
+    return ' '.join(payee.casefold().split())
+
+def category_context(c):
+    rules=[dict(r) for r in c.execute('SELECT r.* FROM rules r JOIN categories c ON c.id=r.category_id ORDER BY r.id')]
+    history={}
+    for row in c.execute("SELECT DISTINCT t.payee,t.category_id FROM transactions t JOIN categories c ON c.id=t.category_id WHERE t.kind='expense'"):
+        key=merchant_key(row['payee'])
+        if key: history.setdefault(key,set()).add(row['category_id'])
+    return rules,{key:next(iter(ids)) if len(ids)==1 else None for key,ids in history.items()}
+
+def category(c, payee, context=None):
+    rules,history=context if context is not None else category_context(c)
+    for rule in rules:
         if rule['contains_text'].casefold() in payee.casefold():
             return rule['category_id']
-    return None
+    return history.get(merchant_key(payee))
 
 def transaction(c, data):
     account = int(data.get('account_id') or 0)
@@ -215,6 +227,7 @@ def preview(c, data):
     mapping=data.get('mapping',{})
     rows=parse_csv(data.get('text',''),mapping.get('delimiter',','))
     result=[]
+    suggestions=category_context(c)
     seen=set()
     seen_ids=set()
     def cell(row,key,required=False):
@@ -246,7 +259,7 @@ def preview(c, data):
                 if mapping.get('invert'): amount=-amount
             if not amount: raise Invalid('Zero amount.')
             ref=clean(cell(row,'imported_id')) or None
-            tx=dict(account_id=account,date=day,payee=payee,amount=amount,kind='expense' if amount<0 else 'income',category_id=category(c,payee) if amount<0 else None,note='',imported_id=ref)
+            tx=dict(account_id=account,date=day,payee=payee,amount=amount,kind='expense' if amount<0 else 'income',category_id=category(c,payee,suggestions) if amount<0 else None,note='',imported_id=ref)
             status=duplicate(c,tx)
             key=(day,' '.join(payee.casefold().split()),amount)
             if ref and ref in seen_ids: status='duplicate'
@@ -362,9 +375,9 @@ class Handler(BaseHTTPRequestHandler):
         url=urlsplit(self.path)
         path=url.path
         try:
-            if method=='GET' and path in ('/','/app.js','/style.css'):
-                filename={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}[path]
-                ctype={'/':'text/html; charset=utf-8','/app.js':'application/javascript','/style.css':'text/css'}[path]
+            if method=='GET' and path in ('/','/app.js','/style.css','/spearmint-logo.png'):
+                filename={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/spearmint-logo.png':'spearmint-logo.png'}[path]
+                ctype={'/':'text/html; charset=utf-8','/app.js':'application/javascript','/style.css':'text/css','/spearmint-logo.png':'image/png'}[path]
                 return self.send(200,(ROOT/'static'/filename).read_bytes(),ctype)
             if method=='GET' and path=='/health': return self.send(200,{'ok':True})
             data={}

@@ -4,7 +4,7 @@
 
 Inspired by Mint. An independent, self-hosted spending tracker focused on understanding your monthly expenses. Spearmint is not affiliated with Intuit. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
 
-**Version 0.3.2 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+**Version 0.4.0 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
 
 ## Run with Docker Compose
 
@@ -25,7 +25,7 @@ docker compose up -d
 
 Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with username **admin** (or your configured `ADMIN_USERNAME`) and that password on first setup. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.3.2`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.0`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
 
 Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `monthly-spend` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
 
@@ -37,7 +37,7 @@ To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password, at least 12 characters. Used only when the user database is first created. Changing it later does not reset a stored password. |
 | `ADMIN_USERNAME` | `admin` | Initial administrator username; used only on first multi-user startup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.3.2` for the current version tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.4.0` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `PUID` | `10001` | Numeric UID used to run the container process. |
 | `PGID` | `10001` | Numeric primary GID used to run the container process. |
@@ -86,7 +86,7 @@ After the first successful publish, open **Stacks → Add stack** and paste `com
 
 ## Upgrade from Monthly Spend / multi-user setup
 
-The visible app is now **Spearmint**. The existing GitHub repository, GHCR image (`ghcr.io/covenn604/monthly-spend`), Compose service/container name, named volume, and administrator database filename remain unchanged to preserve installations. Keep your current data volume mapping and `PUID`/`PGID`. Pull `latest` or `0.3.2` and redeploy; a database backup before upgrading is recommended.
+The visible app is now **Spearmint**. The existing GitHub repository, GHCR image (`ghcr.io/covenn604/monthly-spend`), Compose service/container name, named volume, and administrator database filename remain unchanged to preserve installations. Keep your current data volume mapping and `PUID`/`PGID`. Pull `latest` or `0.4.0` and redeploy; a database backup before upgrading is recommended.
 
 On the first v0.3.0 startup, the app creates an administrator login named **admin** (or `ADMIN_USERNAME`) using your existing `APP_PASSWORD`. That account retains your existing accounts, transactions, categories, rules, CSV formats and import records without copying or moving the original financial database. Existing sessions end on restart. The login screen now requires a username as well as a password.
 
@@ -183,6 +183,10 @@ Card purchases remain expenses. Card bill payments are transfers, preventing dou
 
 Merchant rules apply to new manual entries without an explicit category and to newly previewed expense imports. Matching is case-insensitive, first rule wins. Rules do not modify prior transactions.
 
+When no explicit rule matches, Spearmint now learns from existing categorized expenses belonging to the signed-in user. New purchases with the same full merchant description inherit the category when all categorized expense history for that merchant agrees. Matching ignores case and repeated/leading/trailing whitespace; it does not merge different store numbers or locations. Conflicting history stays uncategorized for review. Manual and bulk category assignments both contribute to this history. Explicit merchant rules take priority. Income, transfers, and refunds do not train the expense-history lookup. Positive CSV rows still default to income and need review for refunds/transfers.
+
+Suggestions appear in the import preview and can be overridden or cleared before import. Renames and category reassignment are reflected in future suggestions. Existing transactions are not changed automatically. The history lookup is built once per preview and is private to each user.
+
 ## Backups and updates
 
 The transaction CSV export is useful for analysis, but is **not a full backup**: it does not include account opening balances, saved mappings, merchant rules, or linked-transfer identity. Spreadsheet formula-like text is prefixed with an apostrophe in exports. Generic import mapping does not automatically restore every exported field.
@@ -228,3 +232,9 @@ node --check static/app.js
 ```
 
 Tests cover integer-money parsing, refunds/transfers, historical and partial-month comparisons, CSV mapping, duplicate selection and replay protection, atomic rollback, login, CRUD, exports, persistence, multi-user isolation, session invalidation, administrator authorization, and category reassignment/deletion. `checks.yml` builds and smoke-tests the Docker image; `docker-publish.yml` separately runs the Python tests and JavaScript check before building and publishing to GHCR. No sample statements or personal financial data are committed.
+
+## v0.4.0 changes
+
+- Preselect import categories from consistent prior expense classifications, after explicit merchant rules.
+- Put account balance descriptions on a separate line below account names.
+- Replace the letter badge with an original white spearmint-leaf mark on login and navigation.
