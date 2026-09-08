@@ -17,7 +17,7 @@ services:
       TZ: ${TZ:-America/Vancouver}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
-      - monthly-spend-data:/data
+      - "${DATA_LOCATION:-monthly-spend-data}:/data"
     read_only: true
     tmpfs:
       - /tmp

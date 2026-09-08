@@ -46,7 +46,7 @@ The supplied [compose.yaml](compose.yaml) uses a persistent named volume, runs a
 
 1. Create a stack and paste the contents of [compose.yaml](compose.yaml).
 2. Set `APP_PASSWORD` in the stack's environment variables. Add any other settings from the table below.
-3. Keep the named volume, or replace its `/data` mount with a dedicated host directory.
+3. Leave `DATA_LOCATION` at its default for the named volume, or set it to an absolute host directory path.
 4. Deploy the stack and open the server address above.
 
 If pulling the image requires authentication, configure credentials for `ghcr.io` in Portainer. For an existing installation, update the same stack and preserve its data mount.
@@ -61,6 +61,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
 | `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.4` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
+| `DATA_LOCATION` | `monthly-spend-data` | Existing named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
 | `PGID` | `10001` | Numeric group ID for the container process. |
 | `CURRENCY` | `CAD` | Display currency shared by all users and accounts. No currency conversion is performed. |
@@ -69,12 +70,22 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 
 ### Host folders and permissions
 
-To store data in a host folder, replace the service's volume entry with your own path:
+To store data in a host folder, set `DATA_LOCATION` in `.env` or in the Portainer stack environment:
+
+```dotenv
+DATA_LOCATION=/mnt/array/appsdata/spearmint/data
+```
+
+Compose mounts it using:
 
 ```yaml
 volumes:
-  - /your/spearmint/data:/data
+  - "${DATA_LOCATION:-monthly-spend-data}:/data"
 ```
+
+Leaving the variable unset or empty keeps the existing `monthly-spend-data` named volume. Use an absolute path for a host directory; the container always uses `/data`. The variable is a Compose setting, not an application environment variable.
+
+For an existing bind-mount installation, set it to your **current host directory** before redeploying the updated Compose file. Changing this setting does not move data: a different empty directory starts a separate installation. To relocate data, stop the app and copy the complete existing data directory to the new location first, preserving access permissions.
 
 The selected `PUID` and `PGID` must have read/write access to the folder and existing database files, plus permission to traverse parent directories. Changing these variables does not change file ownership or filesystem ACLs.
 
