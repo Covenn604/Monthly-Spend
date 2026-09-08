@@ -18,16 +18,16 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: node --check static/app.js
       - run: node --test tests/test_csv_*.js
-      - run: docker build -t monthly-spend:test .
+      - run: docker build -t spearmint:test .
       - name: Check container startup and data volume
         run: |
-          docker run -d --name monthly-spend-check -p 127.0.0.1:8085:8080 -e APP_PASSWORD=ci-only-password-not-for-real-use -v monthly-spend-test:/data monthly-spend:test
+          docker run -d --name spearmint-check -p 127.0.0.1:8085:8080 -e APP_PASSWORD=ci-only-password-not-for-real-use -v spearmint-test:/data spearmint:test
           for attempt in $(seq 1 15); do
             if curl --fail --silent http://127.0.0.1:8085/health; then exit 0; fi
             sleep 1
           done
-          docker logs monthly-spend-check
+          docker logs spearmint-check
           exit 1
       - name: Cleanup
         if: always()
-        run: docker rm -f monthly-spend-check || true
+        run: docker rm -f spearmint-check || true

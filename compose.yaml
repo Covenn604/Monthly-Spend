@@ -1,11 +1,9 @@
-# Keep the original project name so a renamed checkout reuses existing named volumes.
-# Existing custom project/Portainer stack names should continue to be used.
-name: monthly-spend
+name: spearmint
 
 services:
-  monthly-spend:
+  spearmint:
     image: ${APP_IMAGE:-ghcr.io/covenn604/spearmint:latest}
-    container_name: monthly-spend
+    container_name: spearmint
     user: "${PUID:-10001}:${PGID:-10001}"
     restart: unless-stopped
     ports:
@@ -17,7 +15,7 @@ services:
       TZ: ${TZ:-America/Vancouver}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
-      - "${DATA_LOCATION:-monthly-spend-data}:/data"
+      - "${DATA_LOCATION:-spearmint-data}:/data"
     read_only: true
     tmpfs:
       - /tmp
@@ -30,4 +28,4 @@ services:
         max-size: "10m"
         max-file: "3"
 volumes:
-  monthly-spend-data:
+  spearmint-data:

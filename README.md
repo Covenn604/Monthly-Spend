@@ -61,7 +61,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
 | `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.4` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
-| `DATA_LOCATION` | `monthly-spend-data` | Existing named volume, or an absolute host directory mounted at `/data`. |
+| `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
 | `PGID` | `10001` | Numeric group ID for the container process. |
 | `CURRENCY` | `CAD` | Display currency shared by all users and accounts. No currency conversion is performed. |
@@ -80,10 +80,10 @@ Compose mounts it using:
 
 ```yaml
 volumes:
-  - "${DATA_LOCATION:-monthly-spend-data}:/data"
+  - "${DATA_LOCATION:-spearmint-data}:/data"
 ```
 
-Leaving the variable unset or empty keeps the existing `monthly-spend-data` named volume. Use an absolute path for a host directory; the container always uses `/data`. The variable is a Compose setting, not an application environment variable.
+Leaving the variable unset or empty uses the `spearmint-data` named volume. Compose prefixes its actual name with the project name, normally `spearmint_spearmint-data`. Use an absolute path for a host directory; the container always uses `/data`. The variable is a Compose setting, not an application environment variable.
 
 For an existing bind-mount installation, set it to your **current host directory** before redeploying the updated Compose file. Changing this setting does not move data: a different empty directory starts a separate installation. To relocate data, stop the app and copy the complete existing data directory to the new location first, preserving access permissions.
 
@@ -266,7 +266,7 @@ For the supplied Compose configuration, stop the app and copy its data to a **ne
 ```bash
 docker compose stop
 mkdir -p /your/backups/spearmint-backup
-docker cp monthly-spend:/data/. /your/backups/spearmint-backup/
+docker cp spearmint:/data/. /your/backups/spearmint-backup/
 docker compose start
 ```
 
@@ -286,13 +286,33 @@ docker compose up -d
 
 In Portainer, redeploy the **existing stack** with the option to pull the image again enabled. If you pinned `APP_IMAGE` to a version or commit tag, change that value when choosing a newer release.
 
-Keep the same data mount, stack/project name, and user/group permissions. **Do not use `docker compose down -v` unless you intend to delete the named volume.**
+Keep the same data mount and user/group permissions. If upgrading from the old Compose names, follow the migration steps below before redeploying. **Do not use `docker compose down -v` unless you intend to delete the named volume.**
 
 ### Existing Monthly Spend installations
 
 Use `ghcr.io/covenn604/spearmint:latest` for current images and `https://github.com/Covenn604/spearmint.git` for the repository remote.
 
-The supplied Compose project, service, container, volume key, and financial database filenames retain the `monthly-spend` name to preserve existing installations. These names do not need to be changed. Keep any existing custom project name or Portainer stack name and the exact `/data` mount when upgrading.
+The Compose project, service, and container are now named `spearmint`, with `spearmint-data` as the default volume key. Existing financial databases still use `monthly-spend.sqlite3`; the app reads those filenames directly, so do not rename the database files manually.
+
+Before replacing an older Compose configuration:
+
+1. Back up the complete data directory. Use the old container name (`monthly-spend`) in the backup command if that is what is currently running.
+2. Identify its current `/data` mount in Portainer or with `docker inspect monthly-spend --format '{{json .Mounts}}'`.
+3. For a **bind mount**, set `DATA_LOCATION` to that exact existing host directory.
+4. For an **existing named volume**, set `DATA_LOCATION=spearmint-data` and replace the top-level volume declaration in the new Compose file with the following, substituting the actual existing volume name:
+
+```yaml
+volumes:
+  spearmint-data:
+    external: true
+    name: YOUR_EXISTING_VOLUME_NAME
+```
+
+This gives the existing volume the new Compose alias without moving or deleting its contents. Do not put an undeclared old volume name directly in `DATA_LOCATION`.
+
+Stop and remove the old container without deleting its volume before starting the new service, so both containers do not compete for the port or access the same database. With the old Compose configuration still in place, `docker compose down` removes its containers while retaining named volumes; **do not add `-v`**. In Portainer, stop/remove the old deployment while retaining its storage, then deploy the updated configuration with the mount configured above. Confirm that your existing accounts and transactions appear after startup.
+
+Changing project, container, or volume names does not migrate data automatically. Starting the new defaults without pointing them to existing storage creates an empty installation.
 
 ## Troubleshooting
 
