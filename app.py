@@ -207,29 +207,40 @@ def duplicate(c, tx):
             return 'possible'
     return 'new'
 
-def parse_csv(text, delimiter=','):
+def parse_csv(text, delimiter=',', skip_lines=0, with_lines=False):
     if delimiter not in (',',';','\t'):
         raise Invalid('Unsupported delimiter.')
+    if isinstance(skip_lines,bool) or str(skip_lines).strip() != str(int(skip_lines)) or not 0<=int(skip_lines)<=1000:
+        raise Invalid('Lines to skip must be a whole number from 0 to 1,000.')
+    skip_lines=int(skip_lines)
+    lines=text.lstrip('\ufeff').splitlines(keepends=True)
+    reader=csv.reader(io.StringIO(''.join(lines[skip_lines:])),delimiter=delimiter,strict=True)
+    rows=[]
+    source_lines=[]
     try:
-        rows=list(csv.reader(io.StringIO(text.lstrip('\ufeff')),delimiter=delimiter,strict=True))
+        previous=0
+        for row in reader:
+            start=skip_lines+previous+1
+            previous=reader.line_num
+            if any(x.strip() for x in row):
+                rows.append(row)
+                source_lines.append(start)
     except csv.Error as e:
         raise Invalid('CSV could not be read: '+str(e))
-    rows=[r for r in rows if any(x.strip() for x in r)]
     if not rows or not rows[0] or len(rows)>5001:
-        raise Invalid('Use a CSV with a header and at most 5,000 transactions.')
+        raise Invalid('Use a CSV with a header and at most 5,000 transactions. Check lines to skip.')
     if len(rows[0])>100:
         raise Invalid('CSV has too many columns.')
-    return rows
+    return (rows,source_lines) if with_lines else rows
 
 def preview(c, data):
     account=int(data.get('account_id') or 0)
     existing(c,'accounts',account)
     mapping=data.get('mapping',{})
-    rows=parse_csv(data.get('text',''),mapping.get('delimiter',','))
+    rows,source_lines=parse_csv(data.get('text',''),mapping.get('delimiter',','),mapping.get('skip_lines',0),with_lines=True)
     result=[]
     suggestions=category_context(c)
     seen=set()
-    seen_ids=set()
     def cell(row,key,required=False):
         idx=mapping.get(key)
         if idx is None or idx=='':
@@ -238,14 +249,16 @@ def preview(c, data):
         idx=int(idx)
         if idx<0 or idx>=len(row): raise Invalid('Column missing in this row.')
         return row[idx].strip()
-    formats={'iso':'%Y-%m-%d','dmy':'%d/%m/%Y','mdy':'%m/%d/%Y'}
+    formats={'iso':'%Y-%m-%d','dmy':'%d/%m/%Y','mdy':'%m/%d/%Y','compact':'%Y%m%d','ymd_slash':'%Y/%m/%d','dmy_dash':'%d-%m-%Y','mdy_dash':'%m-%d-%Y'}
     if mapping.get('date_format','iso') not in formats:
         raise Invalid('Invalid date format.')
     for i,row in enumerate(rows[1:]):
-        item={'index':i,'line':i+2}
+        item={'index':i,'line':source_lines[i+1]}
         try:
-            if len(row)!=len(rows[0]): raise Invalid('Column count differs from header.')
-            day=datetime.strptime(cell(row,'date',True),formats[mapping.get('date_format','iso')]).date().isoformat()
+            date_text=cell(row,'date',True)
+            if mapping.get('date_format')=='compact' and (len(date_text)!=8 or not date_text.isascii() or not date_text.isdigit()):
+                raise Invalid('YYYYMMDD dates require exactly eight digits.')
+            day=datetime.strptime(date_text,formats[mapping.get('date_format','iso')]).date().isoformat()
             payee=clean(cell(row,'payee',True))
             if not payee: raise Invalid('Description is empty.')
             comma=bool(mapping.get('decimal_comma'))
@@ -258,14 +271,11 @@ def preview(c, data):
                 amount=money(cell(row,'amount',True),comma)
                 if mapping.get('invert'): amount=-amount
             if not amount: raise Invalid('Zero amount.')
-            ref=clean(cell(row,'imported_id')) or None
-            tx=dict(account_id=account,date=day,payee=payee,amount=amount,kind='expense' if amount<0 else 'income',category_id=category(c,payee,suggestions) if amount<0 else None,note='',imported_id=ref)
+            tx=dict(account_id=account,date=day,payee=payee,amount=amount,kind='expense' if amount<0 else 'income',category_id=category(c,payee,suggestions) if amount<0 else None,note='',imported_id=None)
             status=duplicate(c,tx)
             key=(day,' '.join(payee.casefold().split()),amount)
-            if ref and ref in seen_ids: status='duplicate'
-            elif key in seen and status=='new': status='possible'
+            if key in seen and status=='new': status='possible'
             seen.add(key)
-            if ref: seen_ids.add(ref)
             item.update(tx=tx,status=status)
         except (ValueError,TypeError) as e:
             item.update(status='invalid',error=str(e))
@@ -511,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
                     if row['transfer_id']: c.execute('DELETE FROM transactions WHERE transfer_id=?',(row['transfer_id'],))
                     else: c.execute('DELETE FROM transactions WHERE id=?',(key,))
                 elif path=='/api/csv/headers' and method=='POST':
-                    return self.send(200,{'headers':parse_csv(data.get('text',''),data.get('delimiter',','))[0]})
+                    return self.send(200,{'headers':parse_csv(data.get('text',''),data.get('delimiter',','),data.get('skip_lines',0))[0]})
                 elif path=='/api/csv/preview' and method=='POST':
                     result=preview(c,data)
                     c.commit()

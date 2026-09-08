@@ -75,7 +75,7 @@ class FinanceTests(DatabaseFixture):
         with app.db() as c:
             with self.assertRaises(app.Invalid):app.commit_import(c,{'token':p['token'],'selected':[{'index':0}]})
             p2=self.preview_ids(c)
-            self.assertEqual([r['status'] for r in p2['rows']],['duplicate','duplicate'])
+            self.assertEqual([r['status'] for r in p2['rows']],['possible','possible'])
     def test_duplicate_id_scoped_to_account(self):
         with app.db() as c:
             self.tx(c,-100)

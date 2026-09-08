@@ -4,7 +4,7 @@
 
 Inspired by Mint. An independent, self-hosted spending tracker focused on understanding your monthly expenses. Spearmint is not affiliated with Intuit. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
 
-**Version 0.4.1 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+**Version 0.4.2 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
 
 ## Run with Docker Compose
 
@@ -25,7 +25,7 @@ docker compose up -d
 
 Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with username **admin** (or your configured `ADMIN_USERNAME`) and that password on first setup. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/spearmint` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.1`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/spearmint` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.2`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
 
 Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `spearmint` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
 
@@ -37,7 +37,7 @@ To build locally instead, run `docker build -t spearmint:local .`, set `APP_IMAG
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password, at least 12 characters. Used only when the user database is first created. Changing it later does not reset a stored password. |
 | `ADMIN_USERNAME` | `admin` | Initial administrator username; used only on first multi-user startup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Container image. Use `:0.4.1` for the current version tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Container image. Use `:0.4.2` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `PUID` | `10001` | Numeric UID used to run the container process. |
 | `PGID` | `10001` | Numeric primary GID used to run the container process. |
@@ -160,19 +160,19 @@ Selections clear when the search, category, or date range changes, or after reco
 Use a UTF-8 CSV with a header, at most 5,000 data rows, and a file size below 2 MB. Comma, semicolon, and tab delimiters are supported, including quoted fields and a UTF-8 BOM. Other encodings must be converted to UTF-8 first.
 
 1. Select the destination account and upload the CSV.
-2. Map the date and description columns.
+2. Set **Lines to skip before the header** for introductory content; count physical lines, including blank lines. Zero uses the first nonblank row as the header. Then map the date and description columns.
 3. Map one signed amount column, or separate debit and credit columns.
-4. Select the exact date format: `YYYY-MM-DD`, `DD/MM/YYYY`, or `MM/DD/YYYY`.
+4. Select the exact date format: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `YYYYMMDD`, `YYYY/MM/DD`, `DD-MM-YYYY`, or `MM-DD-YYYY`. Compact dates must have exactly eight digits.
 5. Choose decimal-comma mode if needed. Parentheses are accepted for negative amounts.
 6. For credit-card exports with positive purchase amounts, use **Reverse amount signs**. Final negative amounts are money out; positive amounts are money in. Separate debit/credit mode uses credit minus debit and ignores this reversal setting.
-7. Map a stable bank transaction ID/reference if available. Do not use a statement ID shared by multiple rows.
+7. Map only date, description, and amounts. Extra fields (including transaction references, account numbers and row numbers) are ignored. Older profiles with an Imported ID mapping will no longer import that column.
 8. Preview, inspect types and categories, select rows, and confirm the import.
 
-Save the mapping under a format name to reuse it. Saved mappings use column positions; check them when your bank changes its export format. Positive rows default to income: change purchase returns to **Refund**, and account movements or credit-card payments to **Transfer**.
+Save the mapping under a format name to reuse it, including skipped header lines, date format, and your chosen sign setting. Saved mappings use column positions; check them when your bank changes its export format. Positive rows default to income: change purchase returns to **Refund**, and account movements or credit-card payments to **Transfer**.
 
 ### Duplicate detection
 
-- A matching imported ID within the same account is blocked, including repeated IDs in the file.
+- New CSV imports ignore source IDs and use date, signed amount, and normalized payee for possible-duplicate checks. Legacy imported IDs already stored in the database remain unchanged.
 - A matching date, signed amount, and normalized payee is a **possible duplicate**, unchecked by default. You may select it to affirm it is a distinct purchase.
 - Invalid rows are excluded with a reason.
 - Imports run in one database transaction. Matches are checked again when committing. A changed match can require a fresh preview.
@@ -257,3 +257,7 @@ Tests cover integer-money parsing, refunds/transfers, historical and partial-mon
 - Preselect import categories from consistent prior expense classifications, after explicit merchant rules.
 - Put account balance descriptions on a separate line below account names.
 - Replace the letter badge with an original white spearmint-leaf mark on login and navigation.
+
+## v0.4.2 changes
+
+CSV import supports skipped introductory lines and additional date formats. Only selected date, description, and amount/debit/credit fields are imported. Sign reversal remains an explicit user choice. Account-to-profile automatic selection remains queued separately in issue #4.
