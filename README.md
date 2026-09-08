@@ -2,13 +2,28 @@
 
 **Know where your money goes.**
 
-Inspired by Mint. An independent, self-hosted spending tracker focused on understanding your monthly expenses. Spearmint is not affiliated with Intuit. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
+Spearmint is a self-hosted spending tracker inspired by Mint. Record your transactions, see how much you spend each month, and find the categories where spending has increased—without maintaining an envelope budget.
 
-**Version 0.4.4 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-## Run with Docker Compose
+**Current version: 0.4.4** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
-Install Docker with the Compose plugin on your server, then:
+Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
+
+## What you can do
+
+- **Understand monthly spending:** view income, net expenses, money left over, category comparisons, and a six-month trend.
+- **Track account balances:** see opening balances plus recorded activity for bank accounts and credit cards.
+- **Import CSV statements:** map the columns you need, preview transactions, review possible duplicates, and save reusable formats.
+- **Automate repeat imports:** give each account its own default format, including date, header, separator, and amount settings.
+- **Categorize faster:** reuse categories from previous purchases at the same merchant, or define merchant rules.
+- **Clean up across months:** search all transactions and categorize matching purchases in bulk.
+- **Handle card payments correctly:** classify movements between accounts as transfers so they do not inflate income or expenses.
+- **Keep separate finances:** create user logins with private accounts, transactions, categories, rules, and import formats.
+
+## Install with Docker Compose
+
+The published image targets **Linux amd64** (Intel/AMD servers). You need Docker with the Compose plugin and persistent storage for `/data`.
 
 ```bash
 git clone https://github.com/Covenn604/spearmint.git
@@ -16,214 +31,241 @@ cd spearmint
 cp .env.example .env
 ```
 
-Edit `.env` and set `APP_PASSWORD` to a unique password of at least 12 characters. Do not commit this file. Then:
+Edit `.env` and set `APP_PASSWORD` to a unique password of at least 12 characters. Then start Spearmint:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with username **admin** (or your configured `ADMIN_USERNAME`) and that password on first setup. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
+Open **http://YOUR-SERVER-IP:8085**. On a new installation, sign in as **admin** using the password you configured. Set `ADMIN_USERNAME` before the first startup if you want a different administrator username.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/spearmint` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.4`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The supplied [compose.yaml](compose.yaml) uses a persistent named volume, runs as a non-root user, and keeps the container filesystem read-only except for its data and temporary storage.
 
-Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `spearmint` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
+### Install through Portainer
 
-To build locally instead, run `docker build -t spearmint:local .`, set `APP_IMAGE=spearmint:local` in `.env`, and run `docker compose up -d` without the pull step.
+1. Create a stack and paste the contents of [compose.yaml](compose.yaml).
+2. Set `APP_PASSWORD` in the stack's environment variables. Add any other settings from the table below.
+3. Keep the named volume, or replace its `/data` mount with a dedicated host directory.
+4. Deploy the stack and open the server address above.
 
-### Settings
+If pulling the image requires authentication, configure credentials for `ghcr.io` in Portainer. For an existing installation, update the same stack and preserve its data mount.
+
+### Configuration
+
+These variables are read by the supplied Compose file. Set them in `.env` or in your Portainer stack environment.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `APP_PASSWORD` | Required | Initial administrator password, at least 12 characters. Used only when the user database is first created. Changing it later does not reset a stored password. |
-| `ADMIN_USERNAME` | `admin` | Initial administrator username; used only on first multi-user startup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Container image. Use `:0.4.4` for the current version tag or a published `:sha-…` tag for a specific source revision. |
-| `APP_PORT` | `8085` | Published server port. |
-| `PUID` | `10001` | Numeric UID used to run the container process. |
-| `PGID` | `10001` | Numeric primary GID used to run the container process. |
-| `CURRENCY` | `CAD` | Display currency, e.g. CAD or USD. All accounts must use the same currency; no exchange conversion. Choose before entering data. |
+| `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
+| `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.4` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
+| `PUID` | `10001` | Numeric user ID for the container process. |
+| `PGID` | `10001` | Numeric group ID for the container process. |
+| `CURRENCY` | `CAD` | Display currency shared by all users and accounts. No currency conversion is performed. |
 | `TZ` | `America/Vancouver` | Server timezone used for the current reporting day. |
-| `COOKIE_SECURE` | `false` | Set `true` when using HTTPS through a reverse proxy. |
+| `COOKIE_SECURE` | `false` | Set to `true` when accessing Spearmint through HTTPS. |
 
-The original administrator’s financial database remains `/data/monthly-spend.sqlite3`. Login records and password hashes are in `/data/users.sqlite3`; other users’ financial databases are under `/data/users/<numeric-id>/monthly-spend.sqlite3`. All are persisted in the existing `monthly-spend-data` named volume. Docker Compose prefixes the volume name with the project name. The app defaults to UID/GID **10001:10001**, configurable through `PUID` and `PGID`. To use a host directory, replace `monthly-spend-data:/data` with `/your/path:/data` and make that directory and any existing database/journal files writable by the selected user/group. Keep the same volume when updating.
+### Host folders and permissions
 
-### Container user and data-folder permissions
-
-Compose sets the actual process identity using:
+To store data in a host folder, replace the service's volume entry with your own path:
 
 ```yaml
-user: "${PUID:-10001}:${PGID:-10001}"
+volumes:
+  - /your/spearmint/data:/data
 ```
 
-Set `PUID` and `PGID` in `.env`, or in **Portainer → Stack → Environment variables**, then redeploy the stack. For example, to run under host user/group 1000:
+The selected `PUID` and `PGID` must have read/write access to the folder and existing database files, plus permission to traverse parent directories. Changing these variables does not change file ownership or filesystem ACLs.
 
-```dotenv
-PUID=1000
-PGID=1000
-```
-
-Choose IDs that have access to your host directory. Check its numeric owner and group with:
+For example, to prepare a **new, dedicated directory** for UID/GID `1000:1000`:
 
 ```bash
-ls -ldn /mnt/array/appsdata/monthly_spend/data
+sudo mkdir -p /your/spearmint/data
+sudo chown 1000:1000 /your/spearmint/data
+sudo chmod 750 /your/spearmint/data
 ```
 
-Changing these values changes the process identity; it does **not** change ownership or ACLs on existing files or volumes. A new named volume is initially owned by the image's default UID/GID 10001:10001, so using a different identity requires preparing its permissions too. Keep the defaults for an unchanged named-volume installation unless you also update volume permissions.
+Then set `PUID=1000` and `PGID=1000`. For existing data, stop the app before adjusting ownership and permissions on its files. On hosts using ACLs, grant the same access through the ACLs.
 
-For a dedicated Spearmint bind-mount directory, stop the app before adjusting permissions. For example, if you selected 1000:1000:
+The image defaults to `10001:10001`. Keep those IDs for the supplied named volume unless you also prepare that volume for a different owner. With `docker run`, use `--user UID:GID`; passing `PUID` and `PGID` as container environment variables alone does not change the process identity.
 
-```bash
-sudo mkdir -p /mnt/array/appsdata/monthly_spend/data
-sudo chown -R 1000:1000 /mnt/array/appsdata/monthly_spend/data
-sudo chmod 750 /mnt/array/appsdata/monthly_spend/data
-```
+## Set up your finances
 
-Use a directory dedicated to Spearmint; do not change ownership of another application's data directory. On hosts with filesystem ACLs, ensure the selected identity has directory traversal and read/write access through those ACLs as well. Existing database files need read/write permission. No image rebuild is needed for this Compose setting. If launching with `docker run`, the equivalent is `--user 1000:1000`; simply passing `PUID`/`PGID` as container environment variables does not change the image's user.
+1. Open **Accounts & categories** and add your bank accounts and credit cards.
+2. Enter each account's balance immediately before the earliest transaction you plan to record. Credit card debt is negative.
+3. Create or rename your spending categories.
+4. Add transactions manually or import a CSV statement.
+5. Select a month to review spending, then use **Transactions** to correct types or assign categories.
 
-### Portainer
+For manual entries, enter a positive amount and choose **Expense**, **Income**, **Refund**, or **Transfer**. The transaction type determines its direction. An existing imported transfer is edited using its signed amount.
 
-After the first successful publish, open **Stacks → Add stack** and paste `compose.yaml`. Set `APP_PASSWORD` in the stack environment, then deploy. No local build is required. If the GHCR package is private, configure registry credentials in Portainer first, or make the package public for unauthenticated pulls. To update, redeploy the same stack with the option to pull the image again enabled, keeping its data volume unchanged.
+### Account balances
 
-## Repository and Docker package migration (v0.4.1)
+Spearmint calculates:
 
-- Repository: `https://github.com/Covenn604/spearmint`
-- Image: `ghcr.io/covenn604/spearmint:latest` (or `:0.4.1`)
-- The workflow publishes a new `spearmint` package; it does not move or delete the old `monthly-spend` package. Existing old-image installations keep running, but must switch image names to receive future releases.
+**Account balance = opening balance + all recorded transactions**
 
-For an existing Portainer stack, edit **only its image** to `ghcr.io/covenn604/spearmint:latest`, or change the stack's `APP_IMAGE` variable if configured. Keep the existing stack name, service name, container name, `/data` mount, password settings, and UID/GID settings. Redeploy with the option to pull the image again. For a bind mount, keep your exact host directory. Do not create a fresh stack with a different named volume.
+Balances include future-dated entries and do not change with the selected reporting month. They are ledger balances, not live bank balances.
 
-For a Git/Compose installation:
+For credit cards, purchases reduce the balance and payments increase it toward zero. For example, a balance of **−$300** means **$300 owing**.
 
-```bash
-git remote set-url origin https://github.com/Covenn604/spearmint.git
-git pull --ff-only
-```
+Use **Edit opening balance** to correct an account's starting value. The dialog previews the resulting balance. This does not change transactions or monthly spending totals.
 
-Change any existing `.env` entry to `APP_IMAGE=ghcr.io/covenn604/spearmint:latest`, then run `docker compose pull` and `docker compose up -d`. Updating `.env.example` does not update your real `.env` file. Keep any existing `COMPOSE_PROJECT_NAME` or `-p` override unchanged. The supplied Compose file explicitly defaults to project name `monthly-spend`, so renaming the checkout directory to `spearmint` does not change the original default volume name. If you previously used a different inferred project name, pass that same name with `docker compose -p YOUR_EXISTING_PROJECT …` or set `COMPOSE_PROJECT_NAME`.
+If you deliberately want to adjust the starting value to match a target balance, use:
 
-The GHCR package may initially be private; configure GHCR credentials in Portainer or set the new package's visibility to public for unauthenticated pulls. Back up the complete data directory before migrating. No financial database migration is needed for the repository/image rename.
+**Opening balance = target signed balance − net recorded activity**
 
-## Upgrade from Monthly Spend / multi-user setup
+An adjustment can align the total, but does not resolve missing transactions, duplicates, or reversed import signs. Check those first if an account does not match your statement.
 
-The app and repository are now **Spearmint**, and v0.4.1 publishes to `ghcr.io/covenn604/spearmint`. The Compose service/container name, data-volume key, and database filenames retain their original names to preserve installations. Keep your current data mount, stack/project name, and `PUID`/`PGID`. Follow the package migration instructions below when upgrading from the former image.
+### Transfers and credit card payments
 
-On the first v0.3.0 startup, the app creates an administrator login named **admin** (or `ADMIN_USERNAME`) using your existing `APP_PASSWORD`. That account retains your existing accounts, transactions, categories, rules, CSV formats and import records without copying or moving the original financial database. Existing sessions end on restart. The login screen now requires a username as well as a password.
+A credit card purchase is an expense. Paying the card bill is a transfer.
 
-Open **Profile & users** to:
+| Entry | Signed amount | Type |
+| --- | --- | --- |
+| Card payment leaving a bank account | Negative | Transfer |
+| The same payment arriving on the credit card | Positive | Transfer |
 
-- Change your own password (requires the current password).
-- As administrator, create users with initial passwords and private, empty finances.
-- As administrator, reset another user's password, disable their login, or enable it again. Disabling preserves their data; the administrator cannot disable itself.
+Both entries affect their account balances. Neither counts toward income or spending.
 
-Usernames are case-insensitive and contain 3–40 letters, numbers, dots, underscores or hyphens. Passwords require 12–1,024 characters and are stored as salted PBKDF2-SHA256 hashes, not plaintext. Changes and account disabling invalidate existing sessions. Give new users their credentials privately and have them change their password. There is no public registration or email-based password recovery. Once initialized, environment changes to `APP_PASSWORD` or `ADMIN_USERNAME` do not override stored credentials.
+A **new manual transfer** creates linked entries in the source and destination accounts. Deleting either removes both; to change a linked transfer, delete and recreate it.
 
-Each user gets isolated accounts, categories, merchant rules, CSV formats/previews, transactions, and exports. Financial API requests use the authenticated user's database, not a user ID provided by the browser. The administrator can manage logins but does not have a UI to browse another user's finances. The server owner and administrators who can reset passwords remain trusted; this is not encryption against the host administrator. Shared household workspaces are not implemented in this version. The currency and server timezone are shared deployment settings.
+For **imported transfers**, mark the existing entry on each account as Transfer. Spearmint does not create a counterpart or pair imported entries automatically. If you track only one side, its entry can still be a transfer.
 
-## First use
+## Import CSV statements
 
-1. Open **Accounts & categories** and add each bank account and credit card.
-2. Set the opening balance to the account balance immediately before the earliest transaction you will enter/import. Card debt is negative. To backfill older history later, first plan the corresponding opening-balance adjustment. Use **Edit opening balance** on the existing account to apply it.
-3. Add any categories you need. Default categories are included; there are no demo financial records. Click a category’s **Edit** button to rename or delete it.
-4. Enter transactions manually or import a statement.
-5. Choose the statement month at the top. The overview shows income, net expenses, and surplus/deficit. Click a category to inspect its transactions.
+Open **Import transactions**, select the destination account, and upload the CSV file. Extract ZIP archives before uploading.
 
-Amounts are stored as integer cents. Enter positive amounts for manual expenses, income, refunds, and new transfers; the selected type determines the sign. When editing an imported transfer, the form displays its signed amount.
+### Supported formats
 
-**Overview → Account balances** shows each account’s balance, its opening balance, and the net recorded activity. This uses the same balance calculation as Accounts & categories, refreshes after transaction changes/imports, and is independent of the selected reporting month. Only the signed-in user’s accounts are shown.
+| Setting | Support |
+| --- | --- |
+| Encoding | UTF-8, UTF-16 LE, and UTF-16 BE. BOMs are supported; BOM-less UTF-16 is detected when ASCII headings identify its byte order. |
+| Separators | Comma, semicolon, or tab; quoted fields are supported. |
+| Introductory content | Skip up to 1,000 physical lines before the header, including blank lines. |
+| Dates | `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `YYYYMMDD`, `YYYY/MM/DD`, `DD-MM-YYYY`, `MM-DD-YYYY`, or `DD Mon YYYY`, such as `07 Sep 2026`. Month abbreviations are English. |
+| Amounts | One signed amount column, or separate debit and credit columns. Parenthesized negatives and optional decimal-comma formatting are supported. |
+| Size | Up to 2,000,000 bytes and 5,000 data rows, with at most 100 header columns. |
 
-Account balances include the opening balance plus **all entered transactions**, including future-dated entries. They are ledger balances, not live bank balances or reconciled balances.
+Only the selected **date, description, and amount fields** are imported. Account identifiers, cheque numbers, running balances, source IDs, and other unmapped fields are ignored. Saved mappings use column positions, so review them if a bank changes its export layout.
 
-## Change an account opening balance
+### Import workflow
 
-Open **Accounts & categories** and choose **Edit opening balance** beside an account. Enter the corrected amount; the dialog previews the resulting balance using the currently loaded recorded activity. Save to update the account and overview. All existing transactions, imports, and monthly income/expense totals stay unchanged. The update affects only the signed-in user's account.
+1. **Choose the account.** Its default saved format loads automatically, if one is associated.
+2. **Upload the CSV.** Set the separator and number of lines to skip if needed. A value of zero uses the first nonblank row as the header.
+3. **Map the columns.** Choose date, description, and either a signed amount or separate debit/credit columns.
+4. **Check dates and signs.** Select the exact date format. Use **Reverse amount signs** for a signed column when the statement's direction is opposite to Spearmint's. Negative means money out; positive means money in. Split-column mode uses the absolute credit amount minus the absolute debit amount and ignores the reversal checkbox.
+5. **Preview transactions.** Check amounts, categories, types, and duplicate warnings. Positive rows initially count as income: change refunds and transfers to their correct types.
+6. **Import selected transactions.** Only checked, valid rows are committed after confirmation.
 
-For historical accuracy, use the balance immediately before the first entered transaction (negative for credit card debt). If you intentionally want a balancing adjustment, the required opening balance is **target signed balance minus net recorded activity**. This makes the ledger match the target but does not identify missing or duplicate transactions. The preview may change if transactions are added elsewhere before saving.
+### Saved mappings and account defaults
 
-## Edit and delete categories
+| Control | What it does |
+| --- | --- |
+| **Save new format** | Saves the current mapping under a new name and makes it the selected account's default. |
+| **Update selected format** | Replaces the selected format's saved settings with the current mapping. Upload a CSV first to edit its column mapping. |
+| **Rename format** | Changes its name while preserving account associations. No file upload is required. |
+| **Delete format** | Removes the format and clears defaults that refer to it. Imported transactions are kept. |
+| **Use as account default** | Associates an existing saved format with the selected account. |
+| **Clear account default** | Removes the association while keeping the saved format. |
 
-In **Accounts & categories**, click a category's **Edit** button. Renaming preserves its identity, so existing transactions and merchant rules show the new name automatically.
+Every account can have its own default. Switching accounts restores that account's separator, header lines, date format, columns, and amount settings. An account without a default starts with fresh settings, including sign reversal turned off.
 
-Unused categories can be deleted directly from the dialog. For a category in use, choose a replacement; its transactions and merchant rules move in the same database operation before the old category is removed. **Uncategorized** keeps transactions but clears their category. If merchant rules still use the category, choose a real replacement or remove those rules first. Transactions are never deleted by category deletion, and financial amounts are unchanged. Preview your CSV again after changing categories.
+For existing formats, select the account and format, then click **Use as account default** once. Selecting an alternate format for a one-off import does not replace the stored default. Editing a format affects future use by every account associated with it.
 
-Changes affect only the signed-in user's categories. Deleted default categories do not reappear on a later login.
+### Duplicates and undo
 
-## Search and categorize across months
+Spearmint checks for matching **account, date, signed amount, and normalized merchant description**, including repeats within the file. Possible duplicates are unchecked by default. Select one only when it represents a separate transaction you want to keep.
 
-Open **Transactions**, set **Date range → All transactions**, and search by payee/merchant name. Search also matches notes and account names, across all recorded months. By default, **All transactions** shows only expenses and refunds without a category. Categorized records, income, and transfers are hidden from this cleanup list. Newly categorized records disappear from the list after saving. Enable **Show categorized, income and transfers** to review all records and use the category filter. This only filters the view; no records are deleted. Choose **Selected month** to return to monthly browsing. Clicking a category in the monthly overview opens that month's transactions.
+Checks run again when committing the import. Invalid rows show a reason and cannot be imported. Previews expire after one hour and cannot be committed twice; changing the account or mapping requires a new preview.
 
-Check individual expense/refund rows, or use the header checkbox to select every matching expense/refund. Choose a category and click **Apply to selected**. Confirm the number of records to replace their existing categories in one operation. Choose **Uncategorized** to clear assignments. Income and transfers are excluded because they do not use spending categories. Amounts, dates, payees, notes, and transfer links stay unchanged.
+Duplicate detection does not use fuzzy dates or new source transaction IDs. Different dates or descriptions can prevent a match, and two genuine purchases can have identical details.
 
-Selections clear when the search, category, or date range changes, or after records refresh. Up to 5,000 transactions can be categorized in a single operation. The all-transactions view loads recorded history into the browser, so very large histories may take longer to display. Editing/deleting a transaction also works across months. Merchant rules can categorize future purchases; bulk categorization updates the selected existing records only.
+After importing, **Undo this import** removes the batch, including later edits to its rows. The shortcut is available on the completion panel in the current page session. After reloading, use transaction deletion instead.
 
-## CSV import
+## Categorize and review transactions
 
-Use a UTF-8 or UTF-16 CSV with a header, at most 5,000 data rows, and a file size below 2 MB. Comma, semicolon, and tab delimiters are supported, including quoted fields and a UTF-8 BOM. UTF-16 LE and BE are detected automatically, with or without a BOM when ASCII headings identify the byte order. Other encodings must be converted to UTF-8 first. Dates with English abbreviated months are supported through the `DD Mon YYYY` date format.
+### Search across months
 
-1. Select the destination account and upload the CSV.
-2. Set **Lines to skip before the header** for introductory content; count physical lines, including blank lines. Zero uses the first nonblank row as the header. Then map the date and description columns.
-3. Map one signed amount column, or separate debit and credit columns.
-4. Select the exact date format: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `YYYYMMDD`, `YYYY/MM/DD`, `DD-MM-YYYY`, `MM-DD-YYYY`, or `DD Mon YYYY` (English month abbreviation). Compact dates must have exactly eight digits.
-5. Choose decimal-comma mode if needed. Parentheses are accepted for negative amounts.
-6. For credit-card exports with positive purchase amounts, use **Reverse amount signs**. Final negative amounts are money out; positive amounts are money in. Separate debit/credit mode uses credit minus debit and ignores this reversal setting.
-7. Map only date, description, and amounts. Extra fields (including transaction references, account numbers and row numbers) are ignored. Older profiles with an Imported ID mapping will no longer import that column.
-8. Preview, inspect types and categories, select rows, and confirm the import.
+In **Transactions**, select **Date range → All transactions** to search across recorded history. Search matches merchant descriptions, notes, and account names.
 
-Save the mapping under a format name to reuse it, including skipped header lines, date format, and your chosen sign setting. Saved mappings use column positions; check them when your bank changes its export format. Positive rows default to income: change purchase returns to **Refund**, and account movements or credit-card payments to **Transfer**.
+By default, this view shows uncategorized expenses and refunds for cleanup. Categorized records disappear from that view after saving. Enable **Show categorized, income and transfers** to see the complete history. Filtering does not delete records.
 
-### Duplicate detection
+Select matching expense/refund rows, choose a category, and click **Apply to selected**. Choose **Uncategorized** to clear assignments. Up to 5,000 records can be categorized in one operation. Use **Selected month** to return to monthly browsing.
 
-- New CSV imports ignore source IDs and use date, signed amount, and normalized payee for possible-duplicate checks. Legacy imported IDs already stored in the database remain unchanged.
-- A matching date, signed amount, and normalized payee is a **possible duplicate**, unchecked by default. You may select it to affirm it is a distinct purchase.
-- Invalid rows are excluded with a reason.
-- Imports run in one database transaction. Matches are checked again when committing. A changed match can require a fresh preview.
-- A preview expires after one hour and cannot be committed twice.
+### Automatic categorization
 
-No fuzzy date matching is attempted. Changing a payee or date may prevent a possible-duplicate match. No automated method can prove two identical purchases are the same transaction without a reliable bank ID.
+Spearmint first checks explicit merchant rules. Matching is case-insensitive, and the first matching rule wins.
 
-Use **Undo this import** on the completion panel to remove the imported batch, including later edits to those rows. That shortcut is available in the current page session; after leaving/reloading, use transaction deletion. Deleted imported IDs can be imported again.
+If no rule matches, it can reuse a category from previous categorized expenses with the same full merchant description. Matching ignores capitalization and repeated whitespace. If those past expenses disagree on the category, no history-based suggestion is made.
 
-### Transfers and card payments
+Suggestions appear in the CSV preview and can be changed or cleared. Classifying past purchases manually or in bulk helps categorize future imports. Existing transactions are not recategorized automatically. Income, refunds, and transfers do not train the history lookup.
 
-For a new manual transfer, select source and destination accounts. The app creates linked opposing entries; deleting one deletes both. To change a linked transfer, delete and recreate it.
+### Manage categories
 
-For imported transfers, mark the entry as **Transfer** on each account. The app does not generate a second entry or automatically pair imported rows. If only one account is tracked, mark its movement as Transfer and no counterpart is required. To reclassify an existing imported payment, edit its type; the form keeps the original sign when switching to Transfer.
+In **Accounts & categories**, use a category's **Edit** control to rename or delete it. Renaming updates its display throughout the app.
 
-Card purchases remain expenses. Card bill payments are transfers, preventing double-counting.
+When deleting a category, choose another category or **Uncategorized** for its transactions. If merchant rules still use it, reassign them to a valid category or remove those rules first. Transactions are preserved.
 
-## How comparisons work
+## Understand the monthly overview
 
-- **Income:** transactions marked Income.
-- **Net expenses:** expenses minus refunds. Transfers are excluded.
-- **Left over / Over income:** recorded income minus net expenses. This is not a safe-to-spend forecast and does not reserve upcoming bills.
-- **Usual category spending:** mean net expense across the prior three calendar months, excluding months earlier than the earliest recorded non-transfer transaction. Zero-spend months after that starting month count as zero. Partial or missing history can distort the average; the comparison lists the months used.
-- **Current month:** overview includes entries through the server's current day. Historical category comparisons use that same day-of-month, capped at the earlier month's last day. Future-dated transactions remain visible in the transaction list.
-- **Past months:** full-month comparison. The six-month chart shows full earlier months and month-to-date for the current month; it is separate from the same-day category baseline.
-- **Above usual** indicates increased spending, not a judgment that the category is unaffordable. Overall overspending means expenses exceed recorded income.
+| Measure | Meaning |
+| --- | --- |
+| Income | Recorded transactions marked Income. |
+| Net expenses | Expenses minus refunds; transfers are excluded. |
+| Left over / Over income | Income minus net expenses. This does not reserve money for upcoming bills. |
+| Usual category spending | Average net spending across eligible months among the previous three calendar months. |
+| Account balances | Opening balances plus all recorded activity, independent of the reporting month. |
 
-Merchant rules apply to new manual entries without an explicit category and to newly previewed expense imports. Matching is case-insensitive, first rule wins. Rules do not modify prior transactions.
+For the **current month**, spending includes entries through the server's current day. Category comparisons use the same day of each earlier month, capped at that month's last day. Past-month comparisons use full months.
 
-When no explicit rule matches, Spearmint now learns from existing categorized expenses belonging to the signed-in user. New purchases with the same full merchant description inherit the category when all categorized expense history for that merchant agrees. Matching ignores case and repeated/leading/trailing whitespace; it does not merge different store numbers or locations. Conflicting history stays uncategorized for review. Manual and bulk category assignments both contribute to this history. Explicit merchant rules take priority. Income, transfers, and refunds do not train the expense-history lookup. Positive CSV rows still default to income and need review for refunds/transfers.
+The baseline excludes months before the earliest recorded non-transfer transaction. Zero-spend months after that starting month count toward the average. The overview identifies the months used; incomplete history can make comparisons misleading.
 
-Suggestions appear in the import preview and can be overridden or cleared before import. Renames and category reassignment are reflected in future suggestions. Existing transactions are not changed automatically. The history lookup is built once per preview and is private to each user.
+The six-month trend uses full earlier months and month-to-date for the current month. **Above usual** means spending increased relative to your history; it does not mean that category exceeded a configured budget.
 
-## Backups and updates
+## Users and access
 
-The transaction CSV export is useful for analysis, but is **not a full backup**: it does not include account opening balances, saved mappings, merchant rules, or linked-transfer identity. Spreadsheet formula-like text is prefixed with an apostrophe in exports. Generic import mapping does not automatically restore every exported field.
+Open **Profile & users** to change your password. Administrators can also create users, reset their passwords, and disable or re-enable logins. Disabled users retain their data.
 
-For a full backup, stop the app and copy the **entire `/data` directory**, including the user database, all per-user subdirectories, and any SQLite journal files. For example, using a dedicated backup directory on your server:
+Each user has separate financial records and CSV formats. There are no shared household workspaces. The administrator manages logins but has no interface to browse another user's finances; the server owner and anyone able to reset passwords remain trusted administrators.
+
+Passwords are stored as salted PBKDF2-SHA256 hashes. Usernames are case-insensitive, and passwords require 12–1,024 characters. There is no public registration or email password recovery. Once initialized, changing `APP_PASSWORD` or `ADMIN_USERNAME` in the environment does not replace stored credentials.
+
+Sessions last 12 hours and end on server restart. Password changes and disabling a user invalidate their sessions.
+
+Spearmint uses Python's standard-library HTTP server and is intended for a trusted LAN. Use your VPN or an HTTPS reverse proxy for remote access; set `COOKIE_SECURE=true` for HTTPS. HTTP does not encrypt traffic, and database files are not encrypted at rest. Protect the server and its backups. Do not commit statements, passwords, or financial databases to this repository.
+
+## Back up and update
+
+### Backups
+
+Back up the **entire `/data` directory**. It includes:
+
+| Path inside the container | Contents |
+| --- | --- |
+| `/data/users.sqlite3` | User logins and password hashes. |
+| `/data/monthly-spend.sqlite3` | Original administrator's finances. |
+| `/data/users/<id>/monthly-spend.sqlite3` | Each additional user's finances. |
+
+Preserve the directory structure and any SQLite journal files. The transaction CSV export is useful for analysis, but omits opening balances, user accounts, mappings, rules, and transfer links; it is not a full backup.
+
+For the supplied Compose configuration, stop the app and copy its data to a **new backup directory** outside the checkout:
 
 ```bash
 docker compose stop
-mkdir -p /your/backup/path/spearmint
-docker cp monthly-spend:/data/. /your/backup/path/spearmint/
+mkdir -p /your/backups/spearmint-backup
+docker cp monthly-spend:/data/. /your/backups/spearmint-backup/
 docker compose start
 ```
 
-Replace `/your/backup/path/spearmint` with a real location outside the source checkout and use a separate dated directory for each backup. Copying only `monthly-spend.sqlite3` is no longer a full backup: it omits logins and other users' finances.
+Replace the example path and use a distinct directory for each backup. Adjust the container name if your installation uses a different one.
 
-To restore, stop the container and restore the complete backed-up data directory to the data volume, ensuring the configured `PUID`/`PGID` has read/write access. Do not combine a backed-up user database with unrelated per-user directories or leave journal files from a different database state. Preserve the directory structure and test restoration on a separate copy first.
+To restore, stop the app and restore one complete backup to its data mount. Keep files from different backups separate and restore the configured user's access permissions before starting. Verify restoration on a separate copy before relying on the backup.
 
-To update after taking a backup:
+### Updates
+
+After backing up, update a Git/Compose installation with:
 
 ```bash
 git pull --ff-only
@@ -231,43 +273,65 @@ docker compose pull
 docker compose up -d
 ```
 
-Do not run `docker compose down -v` unless you intend to delete your data. The initial schema is created automatically; future releases that change it will need migration handling.
+In Portainer, redeploy the **existing stack** with the option to pull the image again enabled. If you pinned `APP_IMAGE` to a version or commit tag, change that value when choosing a newer release.
 
-## Access and limits
+Keep the same data mount, stack/project name, and user/group permissions. **Do not use `docker compose down -v` unless you intend to delete the named volume.**
 
-This is a **LAN-first personal-finance prototype**, using Python's standard-library HTTP server. It is not designed as a public multi-tenant service. Keep it on a trusted home network; for remote access use your VPN or an HTTPS reverse proxy. Plain HTTP does not encrypt the password or financial data in transit. The database itself is not encrypted; protect the host and backups.
+### Existing Monthly Spend installations
 
-Sessions last 12 hours and are cleared on server restart. Cookies are HttpOnly and SameSite=Strict; write APIs require a custom same-origin header; no cross-origin API access is enabled. Login attempts are rate-limited per source IP. Source code can be public without exposing local data; never upload statements, `.env`, or database backups to the repository.
+Use `ghcr.io/covenn604/spearmint:latest` for current images and `https://github.com/Covenn604/spearmint.git` for the repository remote.
 
-Not included yet: bank sync, multi-currency conversion, transaction splits, recurring-bill forecasting, account deletion, reconciliation, shared household workspaces, category limits, or automatic transfer pairing. The initial UI is responsive, but browser interaction/visual testing has not yet been performed.
+The supplied Compose project, service, container, volume key, and financial database filenames retain the `monthly-spend` name to preserve existing installations. These names do not need to be changed. Keep any existing custom project name or Portainer stack name and the exact `/data` mount when upgrading.
 
-## Development and checks
+## Troubleshooting
 
-Python 3.12+ is sufficient to run the app. Set `APP_PASSWORD` and optionally `DATA_DIR`, then `python app.py`. The default local port is 8080. No dependency installation is required.
+| Problem | What to check |
+| --- | --- |
+| Container fails after changing the data mount or UID/GID | Confirm the host directory exists and the configured identity can traverse directories and read/write all data files. Inspect `docker compose logs --tail=100`. |
+| Image pull is denied | Confirm the image name and registry credentials. Authenticate to GHCR if the package requires it. |
+| App opens but shows “Failed to fetch” | Check container logs and connectivity to the server and published port. If using a reverse proxy, check that it forwards `/api/` as well as the page. |
+| Login fails after changing `.env` | Existing credentials are stored in the user database. Use the password-change or administrator-reset controls; environment changes do not reset them. |
+| Login will not persist over HTTP | Check whether `COOKIE_SECURE=true` is set. Secure cookies require HTTPS. |
+| CSV headings are wrong | Check encoding, delimiter, and introductory lines. Convert unsupported encodings to UTF-8 and select the CSV rather than a ZIP. |
+| CSV rows show invalid dates | Select the matching date format. `YYYYMMDD` requires eight digits; `DD Mon YYYY` uses English month abbreviations. |
+| A saved mapping does not load for an account | Select the account and saved format, then click **Use as account default**. |
+| A payment inflates income or spending | Mark the payment as Transfer on each tracked account and check its signs. |
+| A balance differs from the bank | Check the opening balance, missing or duplicate records, sign inversion, and pending or future-dated entries. |
+
+## Development
+
+The app uses **Python 3.12**, SQLite, and plain HTML/CSS/JavaScript. There are no third-party Python or JavaScript runtime dependencies. Amounts are stored as integer cents.
+
+To run without Docker, set `APP_PASSWORD` in your shell environment and start:
+
+```bash
+python app.py
+```
+
+The local server defaults to port `8080` and a `data` directory beside `app.py`. Override these with `PORT` and `DATA_DIR`. A local Python launch does not automatically load `.env`.
+
+Run the checks with Python and Node.js installed:
 
 ```bash
 python -m unittest discover -s tests -v
 node --check static/app.js
+node --test tests/test_csv_*.js
 ```
 
-Tests cover integer-money parsing, refunds/transfers, historical and partial-month comparisons, CSV mapping, duplicate selection and replay protection, atomic rollback, login, CRUD, exports, persistence, multi-user isolation, session invalidation, administrator authorization, and category reassignment/deletion. `checks.yml` builds and smoke-tests the Docker image; `docker-publish.yml` separately runs the Python tests and JavaScript check before building and publishing to GHCR. No sample statements or personal financial data are committed.
+Tests cover financial calculations, imports and encoding, duplicates, profiles and account defaults, categorization, authentication, and user isolation. CI also builds the image and checks container startup. Browser interaction and visual testing are not part of the automated checks.
 
-## v0.4.0 changes
+To build your own image:
 
-- Preselect import categories from consistent prior expense classifications, after explicit merchant rules.
-- Put account balance descriptions on a separate line below account names.
-- Replace the letter badge with an original white spearmint-leaf mark on login and navigation.
+```bash
+docker build -t spearmint:local .
+```
 
-## v0.4.2 changes
+Set `APP_IMAGE=spearmint:local` and run `docker compose up -d` without pulling from the registry.
 
-CSV import supports skipped introductory lines and additional date formats. Only selected date, description, and amount/debit/credit fields are imported. Sign reversal remains an explicit user choice. Account-to-profile automatic selection was added in v0.4.4.
+The [publishing workflow](.github/workflows/docker-publish.yml) runs on pushes to `main` and manual dispatch. After tests pass, it publishes `latest`, the configured version tag, and a `sha-…` tag to GHCR using `GITHUB_TOKEN`. Publishing an image does not update running installations.
 
-## v0.4.3 changes
+## Current scope
 
-CSV imports automatically decode UTF-16 statements and support dates such as `07 Sep 2026`. Existing column mappings and amount-sign choices are preserved.
+Spearmint currently supports manual entry and CSV imports. Bank synchronization, transaction splits, recurring-bill forecasts, reconciliation workflows, account deletion, multi-currency conversion, category spending limits, shared household workspaces, and automatic pairing of imported transfers are not implemented.
 
-## v0.4.4 changes
-
-Saved CSV formats can be renamed or deleted without uploading a file. To edit a mapping, select it, upload a CSV, adjust the fields, and choose **Update selected format**. **Save new format** creates a separate format and makes it the selected account's default; existing names cannot be overwritten accidentally.
-
-Each account automatically loads its associated format, including separators, header lines, date format, columns, and amount settings. For existing formats, select the account and format, then choose **Use as account default** once. Temporary manual format selections do not change that association. Renaming preserves account associations; deleting a format clears them without changing transactions. **Clear account default** removes just the association. Accounts without a default start with fresh settings. Formats and account defaults remain private to each user.
+For a bug report, include the app version, reproduction steps, and exact error. For CSV problems, provide a small **synthetic** example that preserves the layout and date/amount formats without exposing personal transactions or account details.
