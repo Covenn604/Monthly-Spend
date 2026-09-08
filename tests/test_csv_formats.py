@@ -15,7 +15,7 @@ class CsvFormatTests(DatabaseFixture):
         self.assertEqual(p['rows'][1]['line'],7)
         self.assertEqual(p['rows'][1]['status'],'invalid')
     def test_formats_and_user_controlled_signs(self):
-        for fmt,day in [('compact','20260115'),('ymd_slash','2026/01/15'),('dmy_dash','15-01-2026'),('mdy_dash','01-15-2026'),('iso','2026-01-15')]:
+        for fmt,day in [('dmy_short_month','15 Jan 2026'),('compact','20260115'),('ymd_slash','2026/01/15'),('dmy_dash','15-01-2026'),('mdy_dash','01-15-2026'),('iso','2026-01-15')]:
             for invert in (False,True):
                 p=self.preview('Date,Description,Amount\n'+day+',Shop,25\n'+day+',Payment,-10\n',date_format=fmt,invert=invert)
                 self.assertEqual([r['tx']['amount'] for r in p['rows']],[-2500,1000] if invert else [2500,-1000])
@@ -34,3 +34,10 @@ class CsvFormatTests(DatabaseFixture):
     def test_split_amounts_with_preamble_and_blank_lines(self):
         p=self.preview('Notes\nDate,Description,Debit,Credit\n20260115,Shop,25,\n20260116,Deposit,,10\n',skip_lines=1,date_format='compact',mode='split',debit='2',credit='3')
         self.assertEqual([r['tx']['amount'] for r in p['rows']],[-2500,1000])
+
+    def test_text_month_validation_and_split_amounts(self):
+        for day in ['31 Feb 2026','07 Xxx 2026']:
+            self.assertEqual(self.preview('Date,Description,Amount\n'+day+',Shop,25\n',date_format='dmy_short_month')['rows'][0]['status'],'invalid')
+        p=self.preview('Date,Description,Debit,Credit\n07 Sep 2026,Shop,-$25.00,\n08 Sep 2026,Deposit,,$10.00\n',date_format='dmy_short_month',mode='split',debit='2',credit='3')
+        self.assertEqual([r['tx']['amount'] for r in p['rows']],[-2500,1000])
+        self.assertEqual(p['rows'][0]['tx']['date'],'2026-09-07')

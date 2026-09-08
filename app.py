@@ -249,7 +249,7 @@ def preview(c, data):
         idx=int(idx)
         if idx<0 or idx>=len(row): raise Invalid('Column missing in this row.')
         return row[idx].strip()
-    formats={'iso':'%Y-%m-%d','dmy':'%d/%m/%Y','mdy':'%m/%d/%Y','compact':'%Y%m%d','ymd_slash':'%Y/%m/%d','dmy_dash':'%d-%m-%Y','mdy_dash':'%m-%d-%Y'}
+    formats={'dmy_short_month':'%d %b %Y','iso':'%Y-%m-%d','dmy':'%d/%m/%Y','mdy':'%m/%d/%Y','compact':'%Y%m%d','ymd_slash':'%Y/%m/%d','dmy_dash':'%d-%m-%Y','mdy_dash':'%m-%d-%Y'}
     if mapping.get('date_format','iso') not in formats:
         raise Invalid('Invalid date format.')
     for i,row in enumerate(rows[1:]):
@@ -385,9 +385,9 @@ class Handler(BaseHTTPRequestHandler):
         url=urlsplit(self.path)
         path=url.path
         try:
-            if method=='GET' and path in ('/','/app.js','/style.css','/spearmint-logo.png'):
-                filename={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/spearmint-logo.png':'spearmint-logo.png'}[path]
-                ctype={'/':'text/html; charset=utf-8','/app.js':'application/javascript','/style.css':'text/css','/spearmint-logo.png':'image/png'}[path]
+            if method=='GET' and path in ('/','/app.js','/csv-reader.js','/style.css','/spearmint-logo.png'):
+                filename={'/':'index.html','/app.js':'app.js','/csv-reader.js':'csv-reader.js','/style.css':'style.css','/spearmint-logo.png':'spearmint-logo.png'}[path]
+                ctype={'/':'text/html; charset=utf-8','/app.js':'application/javascript','/csv-reader.js':'application/javascript','/style.css':'text/css','/spearmint-logo.png':'image/png'}[path]
                 return self.send(200,(ROOT/'static'/filename).read_bytes(),ctype)
             if method=='GET' and path=='/health': return self.send(200,{'ok':True})
             data={}
