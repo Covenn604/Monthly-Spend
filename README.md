@@ -4,15 +4,15 @@
 
 Inspired by Mint. An independent, self-hosted spending tracker focused on understanding your monthly expenses. Spearmint is not affiliated with Intuit. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
 
-**Version 0.4.0 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+**Version 0.4.1 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
 
 ## Run with Docker Compose
 
 Install Docker with the Compose plugin on your server, then:
 
 ```bash
-git clone https://github.com/Covenn604/Monthly-Spend.git
-cd Monthly-Spend
+git clone https://github.com/Covenn604/spearmint.git
+cd spearmint
 cp .env.example .env
 ```
 
@@ -25,11 +25,11 @@ docker compose up -d
 
 Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with username **admin** (or your configured `ADMIN_USERNAME`) and that password on first setup. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.0`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/spearmint` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.4.1`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
 
-Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `monthly-spend` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
+Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `spearmint` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
 
-To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_IMAGE=monthly-spend:local` in `.env`, and run `docker compose up -d` without the pull step.
+To build locally instead, run `docker build -t spearmint:local .`, set `APP_IMAGE=spearmint:local` in `.env`, and run `docker compose up -d` without the pull step.
 
 ### Settings
 
@@ -37,7 +37,7 @@ To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password, at least 12 characters. Used only when the user database is first created. Changing it later does not reset a stored password. |
 | `ADMIN_USERNAME` | `admin` | Initial administrator username; used only on first multi-user startup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.4.0` for the current version tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Container image. Use `:0.4.1` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `PUID` | `10001` | Numeric UID used to run the container process. |
 | `PGID` | `10001` | Numeric primary GID used to run the container process. |
@@ -84,9 +84,28 @@ Use a directory dedicated to Spearmint; do not change ownership of another appli
 
 After the first successful publish, open **Stacks → Add stack** and paste `compose.yaml`. Set `APP_PASSWORD` in the stack environment, then deploy. No local build is required. If the GHCR package is private, configure registry credentials in Portainer first, or make the package public for unauthenticated pulls. To update, redeploy the same stack with the option to pull the image again enabled, keeping its data volume unchanged.
 
+## Repository and Docker package migration (v0.4.1)
+
+- Repository: `https://github.com/Covenn604/spearmint`
+- Image: `ghcr.io/covenn604/spearmint:latest` (or `:0.4.1`)
+- The workflow publishes a new `spearmint` package; it does not move or delete the old `monthly-spend` package. Existing old-image installations keep running, but must switch image names to receive future releases.
+
+For an existing Portainer stack, edit **only its image** to `ghcr.io/covenn604/spearmint:latest`, or change the stack's `APP_IMAGE` variable if configured. Keep the existing stack name, service name, container name, `/data` mount, password settings, and UID/GID settings. Redeploy with the option to pull the image again. For a bind mount, keep your exact host directory. Do not create a fresh stack with a different named volume.
+
+For a Git/Compose installation:
+
+```bash
+git remote set-url origin https://github.com/Covenn604/spearmint.git
+git pull --ff-only
+```
+
+Change any existing `.env` entry to `APP_IMAGE=ghcr.io/covenn604/spearmint:latest`, then run `docker compose pull` and `docker compose up -d`. Updating `.env.example` does not update your real `.env` file. Keep any existing `COMPOSE_PROJECT_NAME` or `-p` override unchanged. The supplied Compose file explicitly defaults to project name `monthly-spend`, so renaming the checkout directory to `spearmint` does not change the original default volume name. If you previously used a different inferred project name, pass that same name with `docker compose -p YOUR_EXISTING_PROJECT …` or set `COMPOSE_PROJECT_NAME`.
+
+The GHCR package may initially be private; configure GHCR credentials in Portainer or set the new package's visibility to public for unauthenticated pulls. Back up the complete data directory before migrating. No financial database migration is needed for the repository/image rename.
+
 ## Upgrade from Monthly Spend / multi-user setup
 
-The visible app is now **Spearmint**. The existing GitHub repository, GHCR image (`ghcr.io/covenn604/monthly-spend`), Compose service/container name, named volume, and administrator database filename remain unchanged to preserve installations. Keep your current data volume mapping and `PUID`/`PGID`. Pull `latest` or `0.4.0` and redeploy; a database backup before upgrading is recommended.
+The app and repository are now **Spearmint**, and v0.4.1 publishes to `ghcr.io/covenn604/spearmint`. The Compose service/container name, data-volume key, and database filenames retain their original names to preserve installations. Keep your current data mount, stack/project name, and `PUID`/`PGID`. Follow the package migration instructions below when upgrading from the former image.
 
 On the first v0.3.0 startup, the app creates an administrator login named **admin** (or `ADMIN_USERNAME`) using your existing `APP_PASSWORD`. That account retains your existing accounts, transactions, categories, rules, CSV formats and import records without copying or moving the original financial database. Existing sessions end on restart. The login screen now requires a username as well as a password.
 

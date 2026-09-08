@@ -1,6 +1,10 @@
+# Keep the original project name so a renamed checkout reuses existing named volumes.
+# Existing custom project/Portainer stack names should continue to be used.
+name: monthly-spend
+
 services:
   monthly-spend:
-    image: ${APP_IMAGE:-ghcr.io/covenn604/monthly-spend:latest}
+    image: ${APP_IMAGE:-ghcr.io/covenn604/spearmint:latest}
     container_name: monthly-spend
     user: "${PUID:-10001}:${PGID:-10001}"
     restart: unless-stopped
