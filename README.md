@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.4.4** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.4.5** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -59,7 +59,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.4` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.5` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
@@ -119,7 +119,7 @@ Spearmint calculates:
 
 Balances include future-dated entries and do not change with the selected reporting month. They are ledger balances, not live bank balances.
 
-For credit cards, purchases reduce the balance and payments increase it toward zero. For example, a balance of **−$300** means **$300 owing**.
+For credit cards, purchases reduce the balance and payments increase it toward zero. Negative amounts are displayed in red with parentheses. For example, **($300.00)** means **$300 owing**. Editable numeric fields and CSV exports retain signed numbers.
 
 Use **Edit opening balance** to correct an account's starting value. The dialog previews the resulting balance. This does not change transactions or monthly spending totals.
 
