@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: covenn604/monthly-spend
+  IMAGE_NAME: covenn604/spearmint
 
 permissions:
   contents: read
