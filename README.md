@@ -4,7 +4,7 @@
 
 Inspired by Mint. An independent, self-hosted spending tracker focused on understanding your monthly expenses. Spearmint is not affiliated with Intuit. See what came in, what went out, and which categories cost more than usual—without assigning every dollar to a budget.
 
-**Version 0.3.1 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
+**Version 0.3.2 — initial functional prototype.** Desktop and mobile web interface; manual transactions and CSV import; separate user logins and private financial records; one server-wide currency (CAD by default). Data lives in SQLite on your Docker host, not in GitHub or browser storage. No bank connections, external analytics, or runtime CDNs.
 
 ## Run with Docker Compose
 
@@ -25,7 +25,7 @@ docker compose up -d
 
 Open **http://YOUR-SERVER-IP:8085** from a computer or phone on your home network and sign in with username **admin** (or your configured `ADMIN_USERNAME`) and that password on first setup. The first installation needs access to GitHub Container Registry (GHCR) to download the image. The application has no third-party Python or JavaScript dependencies.
 
-The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.3.1`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
+The `docker-publish.yml` workflow builds and publishes `ghcr.io/covenn604/monthly-spend` on pushes to `main`, or through **Actions → Build and Publish Docker Image → Run workflow**. It runs the Python tests and JavaScript syntax check before publishing `latest`, `0.3.2`, and a `sha-…` tag. Wait for a successful publish before the first pull. GitHub source changes do not update your running container automatically.
 
 Images target **linux/amd64** (Intel/AMD servers). The workflow uses the built-in `GITHUB_TOKEN`; no custom registry secret is needed. GHCR packages can initially be private even for a public repository. For unauthenticated pulls from your home server, change the `monthly-spend` package visibility to public in GitHub package settings; otherwise authenticate your server to GHCR with an account/token allowed to read that package.
 
@@ -37,7 +37,7 @@ To build locally instead, run `docker build -t monthly-spend:local .`, set `APP_
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password, at least 12 characters. Used only when the user database is first created. Changing it later does not reset a stored password. |
 | `ADMIN_USERNAME` | `admin` | Initial administrator username; used only on first multi-user startup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.3.1` for the current version tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/monthly-spend:latest` | Container image. Use `:0.3.2` for the current version tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Published server port. |
 | `PUID` | `10001` | Numeric UID used to run the container process. |
 | `PGID` | `10001` | Numeric primary GID used to run the container process. |
@@ -86,7 +86,7 @@ After the first successful publish, open **Stacks → Add stack** and paste `com
 
 ## Upgrade from Monthly Spend / multi-user setup
 
-The visible app is now **Spearmint**. The existing GitHub repository, GHCR image (`ghcr.io/covenn604/monthly-spend`), Compose service/container name, named volume, and administrator database filename remain unchanged to preserve installations. Keep your current data volume mapping and `PUID`/`PGID`. Pull `latest` or `0.3.1` and redeploy; a database backup before upgrading is recommended.
+The visible app is now **Spearmint**. The existing GitHub repository, GHCR image (`ghcr.io/covenn604/monthly-spend`), Compose service/container name, named volume, and administrator database filename remain unchanged to preserve installations. Keep your current data volume mapping and `PUID`/`PGID`. Pull `latest` or `0.3.2` and redeploy; a database backup before upgrading is recommended.
 
 On the first v0.3.0 startup, the app creates an administrator login named **admin** (or `ADMIN_USERNAME`) using your existing `APP_PASSWORD`. That account retains your existing accounts, transactions, categories, rules, CSV formats and import records without copying or moving the original financial database. Existing sessions end on restart. The login screen now requires a username as well as a password.
 
@@ -103,7 +103,7 @@ Each user gets isolated accounts, categories, merchant rules, CSV formats/previe
 ## First use
 
 1. Open **Accounts & categories** and add each bank account and credit card.
-2. Set the opening balance to the account balance immediately before the earliest transaction you will enter/import. Card debt is negative. To backfill older history later, first plan the corresponding opening-balance adjustment; account editing is not implemented in this prototype.
+2. Set the opening balance to the account balance immediately before the earliest transaction you will enter/import. Card debt is negative. To backfill older history later, first plan the corresponding opening-balance adjustment. Use **Edit opening balance** on the existing account to apply it.
 3. Add any categories you need. Default categories are included; there are no demo financial records. Click a category’s **Edit** button to rename or delete it.
 4. Enter transactions manually or import a statement.
 5. Choose the statement month at the top. The overview shows income, net expenses, and surplus/deficit. Click a category to inspect its transactions.
@@ -113,6 +113,12 @@ Amounts are stored as integer cents. Enter positive amounts for manual expenses,
 **Overview → Account balances** shows each account’s balance, its opening balance, and the net recorded activity. This uses the same balance calculation as Accounts & categories, refreshes after transaction changes/imports, and is independent of the selected reporting month. Only the signed-in user’s accounts are shown.
 
 Account balances include the opening balance plus **all entered transactions**, including future-dated entries. They are ledger balances, not live bank balances or reconciled balances.
+
+## Change an account opening balance
+
+Open **Accounts & categories** and choose **Edit opening balance** beside an account. Enter the corrected amount; the dialog previews the resulting balance using the currently loaded recorded activity. Save to update the account and overview. All existing transactions, imports, and monthly income/expense totals stay unchanged. The update affects only the signed-in user's account.
+
+For historical accuracy, use the balance immediately before the first entered transaction (negative for credit card debt). If you intentionally want a balancing adjustment, the required opening balance is **target signed balance minus net recorded activity**. This makes the ledger match the target but does not identify missing or duplicate transactions. The preview may change if transactions are added elsewhere before saving.
 
 ## Edit and delete categories
 
@@ -210,7 +216,7 @@ This is a **LAN-first personal-finance prototype**, using Python's standard-libr
 
 Sessions last 12 hours and are cleared on server restart. Cookies are HttpOnly and SameSite=Strict; write APIs require a custom same-origin header; no cross-origin API access is enabled. Login attempts are rate-limited per source IP. Source code can be public without exposing local data; never upload statements, `.env`, or database backups to the repository.
 
-Not included yet: bank sync, multi-currency conversion, transaction splits, recurring-bill forecasting, account editing or deletion, reconciliation, shared household workspaces, category limits, or automatic transfer pairing. The initial UI is responsive, but browser interaction/visual testing has not yet been performed.
+Not included yet: bank sync, multi-currency conversion, transaction splits, recurring-bill forecasting, account deletion, reconciliation, shared household workspaces, category limits, or automatic transfer pairing. The initial UI is responsive, but browser interaction/visual testing has not yet been performed.
 
 ## Development and checks
 

@@ -434,6 +434,11 @@ class Handler(BaseHTTPRequestHandler):
                     name=clean(data.get('name'),80)
                     if not name: raise Invalid('Enter an account name.')
                     c.execute('INSERT INTO accounts(name,opening) VALUES (?,?)',(name,money(data.get('opening','0'))))
+                elif path.startswith('/api/accounts/') and method=='PUT':
+                    key=int(path.rsplit('/',1)[1])
+                    existing(c,'accounts',key)
+                    opening=money(data.get('opening',''))
+                    c.execute('UPDATE accounts SET opening=? WHERE id=?',(opening,key))
                 elif path=='/api/categories' and method=='POST':
                     name=clean(data.get('name'),80)
                     if not name: raise Invalid('Enter a category name.')

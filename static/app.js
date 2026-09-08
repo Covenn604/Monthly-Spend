@@ -10,10 +10,10 @@ $('#month').value=localDay().slice(0,7);
 function clearPrivateState(){
  state=null;report=null;allTransactions=[];csvText='';csvHeaders=[];importPreview=null;selectedTransactions.clear();scopeRequest++;
  for(const id of ['tx-body','review-body','import-result','account-list','category-chips','rules-list','users-list','category-list','insights','trend','overview-balances','profile-identity'])$('#'+id).replaceChildren();
- for(const id of ['tx-form','account-form','category-form','rule-form','password-form','user-form','manage-user-form','category-edit-form','category-delete-form'])$('#'+id).reset();
+ for(const id of ['tx-form','account-form','category-form','rule-form','password-form','user-form','manage-user-form','category-edit-form','category-delete-form','account-edit-form'])$('#'+id).reset();
  $('#csv-file').value='';$('#profile-name').value='';$('#mapping').hidden=true;$('#review').hidden=true;$('#user-admin').hidden=true;
  $('#transaction-scope').value='month';$('#show-completed').checked=false;$('#search').value='';$('#category-filter').value='';
- $('#tx-dialog').close();$('#category-dialog').close();if($('#user-action').onchange)$('#user-action').onchange();setView('overview');
+ $('#tx-dialog').close();$('#category-dialog').close();$('#account-edit-dialog').close();if($('#user-action').onchange)$('#user-action').onchange();setView('overview');
 }
 function notify(message){$('#notice').textContent=message;$('#notice').classList.add('show');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('#notice').classList.remove('show'),7000);}
 async function api(path,method='GET',data){const response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Requested-With':'MonthlySpend'},body:data===undefined?undefined:JSON.stringify(data)});const result=await response.json();if(!response.ok){if(response.status===401){clearPrivateState();$('#shell').hidden=true;$('#login').hidden=false;}throw Error(result.error||'Request failed.');}return result;}
@@ -28,7 +28,7 @@ function renderState(){
  $('#tx-category').innerHTML=opts(state.categories,'','Uncategorized / merchant rule');$('#rule-category').innerHTML=opts(state.categories);
  const filter=$('#category-filter'),old=filter.value;filter.innerHTML='<option value="">All categories</option><option value="none">Uncategorized</option>'+state.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');filter.value=old;
  const profile=$('#profile'),p=profile.value;profile.innerHTML='<option value="">New mapping</option>'+state.profiles.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');profile.value=p;
- $('#account-list').innerHTML=state.accounts.length?state.accounts.map(a=>`<div class="account-row"><span>${esc(a.name)}<small>Balance including all entered transactions</small></span><strong>${money(a.balance)}</strong></div>`).join(''):'<p class="empty">Add your first account to start tracking.</p>';
+ $('#account-list').innerHTML=state.accounts.length?state.accounts.map(a=>`<div class="account-row"><span>${esc(a.name)}<small>Balance including all entered transactions</small></span><div class="account-actions"><strong>${money(a.balance)}</strong><button class="secondary" data-edit-opening="${a.id}" aria-label="Edit opening balance for ${esc(a.name)}">Edit opening balance</button></div></div>`).join(''):'<p class="empty">Add your first account to start tracking.</p>';
  $('#category-chips').innerHTML=state.categories.map(c=>`<button class="chip secondary" data-edit-category="${c.id}" aria-label="Edit ${esc(c.name)}">${esc(c.name)} · Edit</button>`).join('');
  $('#rules-list').innerHTML=state.rules.map(r=>`<div class="rule-row"><span><strong>${esc(r.contains_text)}</strong> → ${esc(r.category)}</span><button class="secondary" data-delete-rule="${r.id}">Remove</button></div>`).join('');
 }
@@ -111,6 +111,16 @@ $('#add-transaction').onclick=()=>openTransaction();$('#close-dialog').onclick=(
 $('#tx-form').onsubmit=e=>{e.preventDefault();task(async()=>{const data=Object.fromEntries(new FormData(e.target));await api('/api/transactions',data.id?'PUT':'POST',data);$('#tx-dialog').close();await refresh();notify('Transaction saved.');},e.submitter);};
 $('#tx-body').onclick=e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit)openTransaction(Number(edit.dataset.edit));if(del){const tx=transactionRows().find(t=>t.id===Number(del.dataset.delete));if(confirm(tx.transfer_id?'Delete both sides of this linked transfer?':'Delete this transaction?'))task(async()=>{await api('/api/transactions/'+tx.id,'DELETE',{});await refresh();});}};
 for(const [form,path] of [['account-form','accounts'],['category-form','categories'],['rule-form','rules']])$('#'+form).onsubmit=e=>{e.preventDefault();task(async()=>{await api('/api/'+path,'POST',Object.fromEntries(new FormData(e.target)));e.target.reset();await refresh();notify('Saved.');},e.submitter);};
+function previewOpeningBalance(){
+ const form=$('#account-edit-form'),account=state.accounts.find(a=>a.id===Number(form.elements.id.value));
+ if(!account)return;
+ const opening=$('#account-edit-opening').valueAsNumber,activity=account.balance-account.opening;
+ $('#account-balance-preview').textContent=Number.isFinite(opening)?`Recorded activity: ${money(activity)} · Resulting balance: ${money(Math.round(opening*100)+activity)}`:'Enter a valid opening balance.';
+}
+$('#account-list').onclick=e=>{const button=e.target.closest('[data-edit-opening]');if(!button)return;const a=state.accounts.find(a=>a.id===Number(button.dataset.editOpening));$('#account-edit-form').elements.id.value=a.id;$('#account-edit-title').textContent=`${a.name} — opening balance`;$('#account-edit-opening').value=(a.opening/100).toFixed(2);previewOpeningBalance();$('#account-edit-dialog').showModal();};
+$('#account-edit-opening').oninput=previewOpeningBalance;
+$('#close-account-edit').onclick=()=>$('#account-edit-dialog').close();
+$('#account-edit-form').onsubmit=e=>{e.preventDefault();task(async()=>{const data=Object.fromEntries(new FormData(e.target));await api('/api/accounts/'+data.id,'PUT',{opening:data.opening});$('#account-edit-dialog').close();await refresh();notify('Opening balance updated.');},e.submitter);};
 $('#category-chips').onclick=e=>{const b=e.target.closest('[data-edit-category]');if(!b)return;const cat=state.categories.find(c=>c.id===Number(b.dataset.editCategory));$('#category-edit-form').elements.id.value=cat.id;$('#category-edit-name').value=cat.name;$('#category-edit-title').textContent=`Edit ${cat.name}`;$('#replacement-category').innerHTML=opts(state.categories.filter(c=>c.id!==cat.id),'','Uncategorized');$('#category-dialog').showModal();};
 $('#close-category').onclick=()=>$('#category-dialog').close();
 $('#category-edit-form').onsubmit=e=>{e.preventDefault();task(async()=>{const data=Object.fromEntries(new FormData(e.target));await api('/api/categories/'+data.id,'PUT',{name:data.name});$('#category-dialog').close();invalidatePreview();await refresh();notify('Category renamed.');},e.submitter);};

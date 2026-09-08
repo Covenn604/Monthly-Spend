@@ -108,6 +108,24 @@ class MultiUserTests(unittest.TestCase):
         self.assertEqual(self.req('/api/categories/2','DELETE',{'replacement_id':None})[0],200)
         self.assertIsNone(self.req('/api/transactions')[1]['transactions'][0]['category_id'])
         self.assertEqual(self.req('/api/categories/4','PUT',{'name':''})[0],400)
+    def test_edit_opening_balance_preserves_activity_and_user_isolation(self):
+        before=self.req('/api/transactions')[1]['transactions']
+        monthly=self.req('/api/month?month=2026-01')[1]['expenses']
+        # Existing fixture activity is -3.00; a -237.84 opening yields -240.84.
+        self.assertEqual(self.req('/api/accounts/1','PUT',{'opening':'-237.84'})[0],200)
+        self.assertEqual(self.req('/api/state')[1]['accounts'][0]['balance'],-24084)
+        self.assertEqual(self.req('/api/transactions')[1]['transactions'],before)
+        self.assertEqual(self.req('/api/month?month=2026-01')[1]['expenses'],monthly)
+        self.assertEqual(self.req('/api/accounts/1','PUT',{'opening':'NaN'})[0],400)
+        self.assertEqual(self.req('/api/accounts/99999','PUT',{'opening':'0'})[0],400)
+        self.assertEqual(self.req('/api/state')[1]['accounts'][0]['balance'],-24084)
+        self.add_user()
+        self.assertEqual(self.req('/api/accounts/1','PUT',{'opening':'0'},'alice')[0],400)
+        self.req('/api/accounts','POST',{'name':'Alice account','opening':'0'},'alice')
+        self.assertEqual(self.req('/api/accounts/1','PUT',{'opening':'20'},'alice')[0],200)
+        self.assertEqual(self.req('/api/state')[1]['accounts'][0]['balance'],-24084)
+        self.assertEqual(self.req('/api/state',who='alice')[1]['accounts'][0]['balance'],2000)
+
     def test_deleted_categories_stay_deleted_on_login(self):
         self.add_user()
         for cat in self.req('/api/state',who='alice')[1]['categories']:
