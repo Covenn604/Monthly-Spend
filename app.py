@@ -264,7 +264,7 @@ def preview(c, data):
     rows,source_lines=parse_csv(data.get('text',''),mapping.get('delimiter',','),mapping.get('skip_lines',0),with_lines=True)
     result=[]
     suggestions=category_context(c)
-    seen=set()
+    new_groups={}
     def cell(row,key,required=False):
         idx=mapping.get(key)
         if idx is None or idx=='':
@@ -298,12 +298,14 @@ def preview(c, data):
             tx=dict(account_id=account,date=day,payee=payee,amount=amount,kind='expense' if amount<0 else 'income',category_id=category(c,payee,suggestions) if amount<0 else None,note='',imported_id=None)
             status=duplicate(c,tx)
             key=(day,' '.join(payee.casefold().split()),amount)
-            if key in seen and status=='new': status='possible'
-            seen.add(key)
+            if status=='new': new_groups.setdefault(key,[]).append(item)
             item.update(tx=tx,status=status)
         except (ValueError,TypeError) as e:
             item.update(status='invalid',error=str(e))
         result.append(item)
+    for group in new_groups.values():
+        if len(group)>1:
+            for item in group: item['similar_group']=group[0]['index']
     token=secrets.token_urlsafe(24)
     c.execute('DELETE FROM previews WHERE created<?',(time.time()-3600,))
     c.execute('INSERT INTO previews VALUES (?,?,?)',(token,time.time(),json.dumps(result)))
@@ -317,6 +319,23 @@ def commit_import(c,data):
     selected=data.get('selected',[])
     if not selected: raise Invalid('Select at least one row.')
     if len(selected)!=len({int(s['index']) for s in selected}): raise Invalid('Repeated selection.')
+    # Check the saved ledger before inserting any rows from this batch.
+    current_status={}
+    selected_groups={}
+    for pick in selected:
+        index=int(pick['index'])
+        if index<0 or index>=len(rows): raise Invalid('Invalid row selection.')
+        row=rows[index]
+        if row['status'] in ('invalid','duplicate'): raise Invalid('A selected row cannot be imported.')
+        current_status[index]=duplicate(c,row['tx'])
+        if row.get('similar_group') is not None:
+            group=row['similar_group']
+            selected_groups[group]=selected_groups.get(group,0)+1
+    confirmed=data.get('confirmed_similar_groups',[])
+    if not isinstance(confirmed,list) or any(type(g) is not int for g in confirmed):
+        raise Invalid('Invalid similar-transaction confirmation.')
+    if any(count>1 and group not in confirmed for group,count in selected_groups.items()):
+        raise Invalid('Confirm adding the new transactions with the same date, merchant, and amount, or review your selections.')
     batch=secrets.token_urlsafe(18)
     count=0
     for pick in selected:
@@ -325,7 +344,7 @@ def commit_import(c,data):
         row=rows[index]
         if row['status'] in ('invalid','duplicate'): raise Invalid('A selected row cannot be imported.')
         tx=row['tx']
-        status=duplicate(c,tx)
+        status=current_status[index]
         if status=='duplicate': raise Invalid('A transaction ID now exists. Preview again.')
         if (row['status']=='possible' or status=='possible') and not pick.get('allow_possible'):
             raise Invalid('A possible duplicate needs explicit approval. Preview again.')

@@ -63,3 +63,9 @@ test('account switch discards a pending transaction preview',async()=>{
  resolve({token:'old',rows:[]});await pending;
  assert.equal(c.importPreview,null);
 });
+test('similar-new confirmation groups include only selected new repeats',()=>{
+ const {context:c}=fixture();
+ const rows=[{status:'new',similar_group:0,tx:{}},{status:'new',similar_group:0,tx:{}},{status:'possible',tx:{}},{status:'new',tx:{}}];
+ assert.equal(c.selectedSimilarGroups(rows,[{index:0},{index:1},{index:2},{index:3}])[0].count,2);
+ assert.equal(c.selectedSimilarGroups(rows,[{index:1},{index:2},{index:3}]).length,0);
+});

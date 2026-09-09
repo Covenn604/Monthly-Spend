@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.4.6** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.4.7** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -59,7 +59,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.6` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.7` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
@@ -187,7 +187,9 @@ For existing formats, select the account and format, then click **Use as account
 
 ### Duplicates and undo
 
-Spearmint checks for matching **account, date, signed amount, and normalized merchant description**, including repeats within the file. Possible duplicates are unchecked by default. Select one only when it represents a separate transaction you want to keep.
+Spearmint checks for matching **account, date, signed amount, and normalized merchant description** against transactions already saved in the account. Possible duplicates are unchecked by default. Select one only when it represents a separate transaction you want to keep.
+
+Repeated new charges within a CSV stay selected and are labeled **similar new charge**. If you select two or more with the same date, merchant, and signed amount, Spearmint asks you to confirm adding each group as separate transactions. Cancel to review and adjust your selections. Selecting only one does not need this extra confirmation.
 
 Checks run again when committing the import. Invalid rows show a reason and cannot be imported. Previews expire after one hour and cannot be committed twice; changing the account or mapping requires a new preview.
 

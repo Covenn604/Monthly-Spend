@@ -41,3 +41,30 @@ class CsvFormatTests(DatabaseFixture):
         p=self.preview('Date,Description,Debit,Credit\n07 Sep 2026,Shop,-$25.00,\n08 Sep 2026,Deposit,,$10.00\n',date_format='dmy_short_month',mode='split',debit='2',credit='3')
         self.assertEqual([r['tx']['amount'] for r in p['rows']],[-2500,1000])
         self.assertEqual(p['rows'][0]['tx']['date'],'2026-09-07')
+
+    def test_similar_new_confirmation_and_single_selection(self):
+        text='Date,Description,Amount\n2026-01-15,Example Shop,-25\n2026-01-15,example shop,-25\n2026-01-16,Example Shop,-25\n2026-01-15,Other Shop,-25\n2026-01-15,Example Shop,-30\n'
+        p=self.preview(text)
+        self.assertTrue(all(r['status']=='new' for r in p['rows']))
+        self.assertEqual([r.get('similar_group') for r in p['rows']],[0,0,None,None,None])
+        with self.assertRaises(app.Invalid):
+            with app.db() as c:
+                app.commit_import(c,{'token':p['token'],'selected':[{'index':0},{'index':1}],'confirmed_similar_groups':[99]})
+        with app.db() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM transactions').fetchone()[0],0)
+            result=app.commit_import(c,{'token':p['token'],'selected':[{'index':1}]})
+            self.assertEqual(result['imported'],1)
+        again=self.preview(text)
+        self.assertEqual([r['status'] for r in again['rows'][:2]],['possible','possible'])
+        self.assertTrue(all('similar_group' not in r for r in again['rows']))
+
+    def test_similar_confirmation_does_not_override_changed_ledger(self):
+        text='Date,Description,Amount\n2026-01-15,Shop,-25\n2026-01-15,Shop,-25\n'
+        p=self.preview(text)
+        with app.db() as c:
+            app.insert(c,dict(account_id=1,date='2026-01-15',payee='Shop',amount=-2500,kind='expense',category_id=None,note=''))
+        with self.assertRaises(app.Invalid):
+            with app.db() as c:
+                app.commit_import(c,{'token':p['token'],'selected':[{'index':0},{'index':1}],'confirmed_similar_groups':[0]})
+        with app.db() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM transactions').fetchone()[0],1)

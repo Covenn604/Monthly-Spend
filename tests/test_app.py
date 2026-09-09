@@ -65,12 +65,12 @@ class FinanceTests(DatabaseFixture):
     def test_import_atomic_duplicate_choice_and_replay(self):
         with app.db() as c:
             p=self.preview_ids(c)
-            self.assertEqual([r['status'] for r in p['rows']],['new','possible'])
+            self.assertEqual([r['status'] for r in p['rows']],['new','new'])
         with self.assertRaises(app.Invalid):
             with app.db() as c: app.commit_import(c,{'token':p['token'],'selected':[{'index':0},{'index':1}]})
         with app.db() as c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM transactions').fetchone()[0],0)
-            result=app.commit_import(c,{'token':p['token'],'selected':[{'index':0},{'index':1,'allow_possible':True}]})
+            result=app.commit_import(c,{'token':p['token'],'selected':[{'index':0},{'index':1}],'confirmed_similar_groups':[0]})
             self.assertEqual(result['imported'],2)
         with app.db() as c:
             with self.assertRaises(app.Invalid):app.commit_import(c,{'token':p['token'],'selected':[{'index':0}]})
