@@ -45,7 +45,9 @@ class MerchantHistoryTests(DatabaseFixture):
         with app.db() as c:self.assertEqual(c.execute("SELECT category_id FROM transactions WHERE date='2026-02-01'").fetchone()[0],3)
     def test_history_is_scoped_to_user_database(self):
         with app.db() as c:self.add(c,'Private merchant',2)
-        token=app.CURRENT_USER.set(999)
+        app.auth.init(app.DATA,'test-admin-password-123')
+        user=app.auth.create(app.DATA,'other-user','test-user-password-123')
+        token=app.CURRENT_USER.set(user['id'])
         try:
             app.init()
             with app.db() as c:self.assertIsNone(app.category(c,'Private merchant'))

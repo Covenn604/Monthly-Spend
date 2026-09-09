@@ -127,8 +127,19 @@ async function renderUsers(){
 }
 $('#password-form').onsubmit=e=>{e.preventDefault();task(async()=>{await api('/api/password','POST',Object.fromEntries(new FormData(e.target)));e.target.reset();$('#shell').hidden=true;$('#login').hidden=false;clearPrivateState();notify('Password changed. Sign in with your new password.');},e.submitter);};
 $('#user-form').onsubmit=e=>{e.preventDefault();task(async()=>{await api('/api/users','POST',Object.fromEntries(new FormData(e.target)));e.target.reset();await renderUsers();notify('User created. Share the login details privately.');},e.submitter);};
-$('#user-action').onchange=()=>{const reset=$('#user-action').value==='reset_password';$('#reset-password-label').hidden=!reset;$('#reset-password').required=reset;$('#reset-password').value='';};
-$('#manage-user-form').onsubmit=e=>{e.preventDefault();task(async()=>{const data=Object.fromEntries(new FormData(e.target));if(!confirm('Apply this change to the selected user?'))return;await api('/api/users/'+data.user_id,'POST',{action:data.action,password:data.password});$('#reset-password').value='';await renderUsers();notify('User updated.');},e.submitter);};
+$('#user-action').onchange=()=>{const reset=$('#user-action').value==='reset_password';$('#delete-user-warning').hidden=$('#user-action').value!=='delete';$('#reset-password-label').hidden=!reset;$('#reset-password').required=reset;$('#reset-password').value='';};
+$('#manage-user-form').onsubmit=e=>{e.preventDefault();task(async()=>{const data=Object.fromEntries(new FormData(e.target));if(data.action==='delete'){
+ const username=$('#manage-user').selectedOptions[0]?.textContent;
+ if(!data.user_id||!username)throw Error('Select a user to delete.');
+ const confirmation=prompt(`Permanently delete ${username}? This deletes all their saved transactions, accounts, categories, merchant rules, and CSV mappings. This cannot be undone.\n\nType ${username} exactly to confirm:`);
+ if(confirmation===null)return;
+ if(confirmation!==username)throw Error('Username did not match. Nothing was deleted.');
+ await api('/api/users/'+data.user_id,'DELETE',{confirm_username:confirmation});
+}else{
+ if(!confirm('Apply this change to the selected user?'))return;
+ await api('/api/users/'+data.user_id,'POST',{action:data.action,password:data.password});
+}
+$('#reset-password').value='';await renderUsers();notify(data.action==='delete'?'User and saved financial data deleted.':'User updated.');},e.submitter);};
 $('#login-form').onsubmit=e=>{e.preventDefault();task(async()=>{await api('/api/login','POST',{username:e.target.username.value,password:e.target.password.value});e.target.reset();await refresh();},e.submitter);};
 $('#logout').onclick=()=>task(async()=>{await api('/api/logout','POST',{});clearPrivateState();$('#shell').hidden=true;$('#login').hidden=false;});
 $('nav').onclick=e=>{const b=e.target.closest('[data-view]');if(b)setView(b.dataset.view);};

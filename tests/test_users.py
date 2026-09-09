@@ -169,3 +169,44 @@ class MultiUserTests(unittest.TestCase):
         self.assertEqual(self.req('/api/profiles','POST',{'name':'Invalid account','mapping':{},'account_id':9999})[0],400)
         self.assertFalse(any(p['name']=='Invalid account' for p in self.req('/api/state')[1]['profiles']))
         self.assertEqual(self.req('/api/transactions')[1],before)
+
+    def test_delete_user_requires_confirmation_and_preserves_other_users(self):
+        key=self.add_user()
+        self.req('/api/accounts','POST',{'name':'Private account','opening':'0'},'alice')
+        self.req('/api/transactions','POST',{'account_id':1,'date':'2026-01-01','payee':'Private purchase','amount':'20','kind':'expense'},'alice')
+        folder=app.DATA/'users'/str(key)
+        self.assertTrue(folder.exists())
+        before=self.req('/api/transactions')[1]
+        for confirmation in [None,'','ALICE','alice ']:
+            self.assertEqual(self.req('/api/users/'+str(key),'DELETE',{'confirm_username':confirmation})[0],400)
+        self.assertTrue(folder.exists())
+        self.assertEqual(self.req('/api/users/1','DELETE',{'confirm_username':'admin'})[0],400)
+        self.assertEqual(self.req('/api/users/'+str(key),'DELETE',{'confirm_username':'alice'},'alice')[0],403)
+        self.assertEqual(self.req('/api/users/'+str(key),'DELETE',{'confirm_username':'alice'})[0],200)
+        self.assertFalse(folder.exists())
+        self.assertIsNone(app.auth.get(app.DATA,key))
+        self.assertEqual(self.req('/api/state',who='alice')[0],401)
+        self.assertEqual(self.req('/api/login','POST',{'username':'alice','password':USER_PASSWORD},'alice')[0],401)
+        self.assertEqual(self.req('/api/transactions')[1],before)
+        # Requests already authenticated before deletion cannot recreate storage.
+        token=app.CURRENT_USER.set(key)
+        try:
+            with self.assertRaises(app.Invalid):
+                with app.db(): pass
+        finally: app.CURRENT_USER.reset(token)
+        self.assertFalse(folder.exists())
+        new_key=self.add_user()
+        self.assertGreater(new_key,key)
+        self.assertEqual(self.req('/api/state',who='alice')[1]['accounts'],[])
+
+    def test_delete_user_cleanup_failure_is_retryable(self):
+        from unittest.mock import patch
+        key=self.add_user()
+        with patch('auth.shutil.rmtree',side_effect=PermissionError('test')):
+            status,result=self.req('/api/users/'+str(key),'DELETE',{'confirm_username':'alice'})
+        self.assertEqual(status,400)
+        self.assertIn('disabled',result['error'])
+        self.assertFalse(app.auth.get(app.DATA,key)['enabled'])
+        self.assertEqual(self.req('/api/state',who='alice')[0],401)
+        self.assertEqual(self.req('/api/users/'+str(key),'DELETE',{'confirm_username':'alice'})[0],200)
+        self.assertFalse((app.DATA/'users'/str(key)).exists())

@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.4.5** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.4.6** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -59,7 +59,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.5` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.6` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
@@ -238,6 +238,8 @@ The six-month trend uses full earlier months and month-to-date for the current m
 ## Users and access
 
 Open **Profile & users** to change your password. Administrators can also create users, reset their passwords, and disable or re-enable logins. Disabled users retain their data.
+
+To permanently remove a user, select them under **Manage an existing user**, choose **Delete user permanently**, and apply the change. Review the warning and type their username exactly to confirm. Deletion removes their login and all saved transactions, accounts, categories, merchant rules, and CSV mappings, and ends their sessions. The administrator cannot be deleted. Existing backups are not modified. If data cleanup fails, the user stays disabled; correct the data-folder permissions and retry deletion.
 
 Each user has separate financial records and CSV formats. There are no shared household workspaces. The administrator manages logins but has no interface to browse another user's finances; the server owner and anyone able to reset passwords remain trusted administrators.
 

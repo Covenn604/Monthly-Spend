@@ -26,6 +26,11 @@ PASSWORD = os.environ.get('APP_PASSWORD', '')
 SESSIONS = {}
 ATTEMPTS = {}
 LOCK = threading.Lock()
+USER_DATA_LOCKS = {}
+
+def user_data_lock(user_id):
+    with LOCK:
+        return USER_DATA_LOCKS.setdefault(user_id, threading.RLock())
 CURRENT_USER = ContextVar('current_user', default=1)
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
 
@@ -35,16 +40,21 @@ class Invalid(ValueError):
 @contextmanager
 def db():
     user_id = CURRENT_USER.get()
-    folder = DATA if user_id == 1 else DATA / 'users' / str(user_id)
-    folder.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(folder / 'monthly-spend.sqlite3', timeout=15)
-    con.row_factory = sqlite3.Row
-    con.execute('PRAGMA foreign_keys=ON')
-    try:
-        with con:
-            yield con
-    finally:
-        con.close()
+    with user_data_lock(user_id):
+        if user_id != 1:
+            user = auth.get(DATA,user_id)
+            if not user or not user['enabled']:
+                raise Invalid('This user is no longer active.')
+        folder = DATA if user_id == 1 else DATA / 'users' / str(user_id)
+        folder.mkdir(parents=True, exist_ok=True)
+        con = sqlite3.connect(folder / 'monthly-spend.sqlite3', timeout=15)
+        con.row_factory = sqlite3.Row
+        con.execute('PRAGMA foreign_keys=ON')
+        try:
+            with con:
+                yield con
+        finally:
+            con.close()
 
 def init():
     DATA.mkdir(parents=True, exist_ok=True)
@@ -443,6 +453,15 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/users' and method=='POST':
                     created=auth.create(DATA,data.get('username'),data.get('password'))
                     return self.send(200,{'user':created})
+                if path.startswith('/api/users/') and method=='DELETE':
+                    key=int(path.rsplit('/',1)[1])
+                    if key==self.user['id']: raise Invalid('You cannot delete your own account.')
+                    with user_data_lock(key):
+                        auth.delete_user(DATA,key,data.get('confirm_username'))
+                        with LOCK:
+                            for token in list(SESSIONS):
+                                if SESSIONS[token]['user_id']==key: del SESSIONS[token]
+                    return self.send(200,{'ok':True})
                 if path.startswith('/api/users/') and method=='POST':
                     auth.manage(DATA,int(path.rsplit('/',1)[1]),data.get('action'),data.get('password'))
                     return self.send(200,{'ok':True})

@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import shutil
 import sqlite3
 from contextlib import contextmanager
 
@@ -83,3 +84,23 @@ def manage(data_dir,key,action,password=None):
         if row['is_admin']: raise ValueError('Use your own password settings to manage the administrator.')
         if action=='reset_password': c.execute('UPDATE users SET password_hash=?,version=version+1 WHERE id=?',(encoded,key))
         else: c.execute('UPDATE users SET enabled=?,version=version+1 WHERE id=?',(int(action=='enable'),key))
+
+
+def delete_user(data_dir,key,confirmation):
+    # Caller holds the user's data lock until filesystem cleanup is complete.
+    with connection(data_dir) as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute('SELECT * FROM users WHERE id=?',(key,)).fetchone()
+        if not row: raise ValueError('User not found.')
+        if key==1 or row['is_admin']: raise ValueError('The administrator cannot be deleted.')
+        if confirmation != row['username']:
+            raise ValueError('Type the username exactly to confirm deletion.')
+        c.execute('UPDATE users SET enabled=0,version=version+1 WHERE id=?',(key,))
+    # Disable first so a failed cleanup or restart cannot expose partially deleted data.
+    folder=data_dir/'users'/str(key)
+    try:
+        if folder.exists() or folder.is_symlink(): shutil.rmtree(folder)
+    except OSError as error:
+        raise ValueError('Data deletion could not finish. The user is disabled. Check data-folder permissions and retry deleting the user.') from error
+    with connection(data_dir) as c:
+        c.execute('DELETE FROM users WHERE id=?',(key,))
