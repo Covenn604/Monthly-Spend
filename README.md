@@ -25,7 +25,7 @@ Spearmint is an independent project and is not affiliated with Mint or Intuit. I
 
 Spearmint also has a standalone Windows 11 x64 installer. It bundles Python, the backend, and the interface; Docker and a separate server are not required. Both editions share the same application features, but their databases are independent and do not synchronize.
 
-1. Download the Windows installer from a successful [Windows build](https://github.com/Covenn604/spearmint/actions/workflows/windows-build.yml), under **Artifacts → Spearmint-Windows-x64-installer**, and extract the ZIP. GitHub sign-in is required for Actions artifact downloads.
+1. Open the [Spearmint v0.4.9 release](https://github.com/Covenn604/spearmint/releases/tag/0.4.9) and download `Spearmint-0.4.9-Windows-x64-Setup.exe` from **Assets**.
 2. Run `Spearmint-0.4.9-Windows-x64-Setup.exe`. It installs for the current Windows user and offers a desktop shortcut.
 3. Open Spearmint and create your administrator username and password in the first-run setup window.
 4. Sign in and add accounts or import CSVs as usual.
@@ -36,7 +36,7 @@ Financial data is stored in `%LOCALAPPDATA%\Spearmint\data`. The backend listens
 
 To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. There is no automatic updater or synchronization in this initial desktop edition.
 
-The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Download artifacts expire after 30 days; durable public releases can be published after desktop acceptance testing.
+The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Windows installers are distributed through [GitHub Releases](https://github.com/Covenn604/spearmint/releases/tag/0.4.9).
 
 ## Install with Docker Compose
 
