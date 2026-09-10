@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.4.8** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.4.9** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -20,6 +20,23 @@ Spearmint is an independent project and is not affiliated with Mint or Intuit. I
 - **Clean up across months:** search all transactions and categorize matching purchases in bulk.
 - **Handle card payments correctly:** classify movements between accounts as transfers so they do not inflate income or expenses.
 - **Keep separate finances:** create user logins with private accounts, transactions, categories, rules, and import formats.
+
+## Windows standalone edition
+
+Spearmint also has a standalone Windows 11 x64 installer. It bundles Python, the backend, and the interface; Docker and a separate server are not required. Both editions share the same application features, but their databases are independent and do not synchronize.
+
+1. Download the Windows installer from a successful [Windows build](https://github.com/Covenn604/spearmint/actions/workflows/windows-build.yml), under **Artifacts → Spearmint-Windows-x64-installer**, and extract the ZIP. GitHub sign-in is required for Actions artifact downloads.
+2. Run `Spearmint-0.4.9-Windows-x64-Setup.exe`. It installs for the current Windows user and offers a desktop shortcut.
+3. Open Spearmint and create your administrator username and password in the first-run setup window.
+4. Sign in and add accounts or import CSVs as usual.
+
+If Microsoft WebView2 Runtime is missing, the installer runs Microsoft's signed bootstrapper; this requires internet access. Normal financial tracking works offline. Initial builds are unsigned and Windows may show a publisher/reputation warning; code signing is not configured yet.
+
+Financial data is stored in `%LOCALAPPDATA%\Spearmint\data`. The backend listens only on `127.0.0.1` using an available port and stops when the desktop window closes. Only one desktop instance may use that data folder at a time. Other devices cannot connect to the standalone edition; use Docker for server access.
+
+To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. There is no automatic updater or synchronization in this initial desktop edition.
+
+The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Download artifacts expire after 30 days; durable public releases can be published after desktop acceptance testing.
 
 ## Install with Docker Compose
 
@@ -59,7 +76,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.8` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.9` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |

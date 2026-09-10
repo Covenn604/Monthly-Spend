@@ -1,0 +1,71 @@
+name: Build Windows standalone installer
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install desktop build dependencies
+        run: python -m pip install -r desktop/requirements.txt
+      - name: Test shared application
+        run: python -m unittest discover -s tests -v
+      - name: Check JavaScript
+        run: |
+          node --check static/app.js
+          node --test tests/test_csv_reader.js tests/test_csv_profiles.js
+      - name: Bundle standalone application
+        run: python -m PyInstaller --noconfirm --clean --windowed --name Spearmint --paths . --add-data "static;static" --collect-all webview desktop/launcher.py
+      - name: Smoke-test packaged backend and assets
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath dist/Spearmint/Spearmint.exe -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged smoke test failed: $($process.ExitCode)" }
+      - name: Download signed Microsoft WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile desktop/WebView2Setup.exe
+          $signature = Get-AuthenticodeSignature desktop/WebView2Setup.exe
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Unexpected WebView2 installer signature' }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" desktop/spearmint.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+      - name: Test installation and preserved data
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem dist/installer/*Setup.exe).FullName
+          $process = Start-Process $installer -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Install failed' }
+          $exe = "$env:LOCALAPPDATA/Programs/Spearmint/Spearmint.exe"
+          $process = Start-Process $exe -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Installed smoke test failed' }
+          $process = Start-Process $exe -ArgumentList '--ui-smoke-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Installed WebView2 smoke test failed' }
+          $data = "$env:LOCALAPPDATA/Spearmint/data"
+          New-Item -ItemType Directory -Force $data | Out-Null
+          Set-Content "$data/preserve-test.txt" 'keep this'
+          $process = Start-Process "$env:LOCALAPPDATA/Programs/Spearmint/unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or !(Test-Path "$data/preserve-test.txt")) { throw 'Uninstall failed or removed data' }
+      - name: Add checksum
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/installer/*Setup.exe | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | Set-Content dist/installer/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spearmint-Windows-x64-installer
+          path: dist/installer/*
+          retention-days: 30

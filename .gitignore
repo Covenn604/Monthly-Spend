@@ -7,3 +7,8 @@ data/
 __pycache__/
 *.pyc
 .venv/
+
+build/
+dist/
+*.spec
+desktop/WebView2Setup.exe

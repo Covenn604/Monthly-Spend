@@ -6,3 +6,7 @@ data
 *.sqlite3*
 __pycache__
 tests
+
+desktop
+build
+dist
