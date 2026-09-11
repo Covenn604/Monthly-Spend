@@ -239,6 +239,8 @@ def main():
 
 
 if __name__ == '__main__':
+    if ('--ui-smoke-test' in sys.argv or '--smoke-test' in sys.argv) and sys.stderr is None:
+        sys.stdout = sys.stderr = open('spearmint-smoke.log', 'w', encoding='utf-8', buffering=1)
     try:
         sys.exit(main())
     except Exception:

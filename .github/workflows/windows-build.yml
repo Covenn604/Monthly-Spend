@@ -28,6 +28,8 @@ jobs:
         run: |
           node --check static/app.js
           node --test tests/test_csv_reader.js tests/test_csv_profiles.js
+      - name: Check native dialogs and filter layout
+        run: python desktop/launcher.py --ui-smoke-test
       - name: Bundle standalone application
         run: python -m PyInstaller --noconfirm --clean --windowed --name Spearmint --paths . --icon desktop/spearmint.ico --add-data "desktop/spearmint.ico;static" --add-data "static;static" --collect-all webview desktop/launcher.py
       - name: Smoke-test packaged backend and assets
@@ -56,7 +58,7 @@ jobs:
           $process = Start-Process $exe -ArgumentList '--smoke-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw 'Installed smoke test failed' }
           $process = Start-Process $exe -ArgumentList '--ui-smoke-test' -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw 'Installed WebView2 smoke test failed' }
+          if ($process.ExitCode -ne 0) { Get-Content spearmint-smoke.log -ErrorAction SilentlyContinue; throw 'Installed WebView2 smoke test failed' }
           $data = "$env:LOCALAPPDATA/Spearmint/data"
           New-Item -ItemType Directory -Force $data | Out-Null
           Set-Content "$data/preserve-test.txt" 'keep this'
