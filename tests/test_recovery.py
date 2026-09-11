@@ -1,3 +1,4 @@
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -55,7 +56,7 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError): auth.recovery_start(self.data,'admin','different-ip')
     def test_old_user_schema_preserved_and_requires_setup(self):
         other=self.data/'legacy';other.mkdir()
-        with sqlite3.connect(other/'users.sqlite3') as c:
+        with closing(sqlite3.connect(other/'users.sqlite3')) as c, c:
             c.execute('CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,is_admin INTEGER NOT NULL DEFAULT 0,enabled INTEGER NOT NULL DEFAULT 1,version INTEGER NOT NULL DEFAULT 1)')
             c.execute('INSERT INTO users VALUES (1,?,?,1,1,1)',('owner',auth.password_hash(PASSWORD)))
         auth.init(other,'unused-password-123')

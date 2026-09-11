@@ -1,3 +1,4 @@
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -18,7 +19,7 @@ class MigrationTests(unittest.TestCase):
             migration.migrate_all(root)
             for folder in [root,root/'users'/'2',root/'users'/'3']:
                 self.assertFalse((folder/'monthly-spend.sqlite3').exists())
-                with sqlite3.connect(folder/'spearmint.sqlite3') as c:
+                with closing(sqlite3.connect(folder/'spearmint.sqlite3')) as c:
                     self.assertEqual(c.execute('SELECT value FROM saved').fetchone()[0],42)
     def test_conflicting_files_are_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
