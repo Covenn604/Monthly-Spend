@@ -14,7 +14,18 @@ if not getattr(sys, 'frozen', False):
 import app
 import auth
 
-VERSION = '0.4.9'
+VERSION = '0.5.0'
+
+def icon_path():
+    return app.ROOT/'static'/'spearmint.ico' if getattr(sys,'frozen',False) else Path(__file__).parent/'spearmint.ico'
+
+def window_icon(window):
+    # WinForms uses the executable icon; explicitly set the window icon too.
+    def apply():
+        from System.Drawing import Icon
+        window.native.Icon = Icon(str(icon_path()))
+    window.events.before_show += apply
+
 
 
 def data_path():
@@ -47,7 +58,8 @@ def needs_setup(folder):
     database = folder / 'users.sqlite3'
     if not database.exists():
         return True
-    return not auth.list_users(folder)
+    with auth.connection(folder) as c:
+        return not c.execute('SELECT 1 FROM users LIMIT 1').fetchone()
 
 
 def setup_account(folder):
@@ -55,11 +67,12 @@ def setup_account(folder):
     from tkinter import ttk, messagebox
     window = tk.Tk()
     window.title('Welcome to Spearmint')
+    if icon_path().exists(): window.iconbitmap(str(icon_path()))
     window.resizable(False, False)
     frame = ttk.Frame(window, padding=24)
     frame.pack()
     ttk.Label(frame, text='Set up your private spending tracker', font=('Segoe UI', 15, 'bold')).pack(anchor='w')
-    ttk.Label(frame, text='Create your administrator login. Your finances will be saved on this PC.\nNo Docker or separate server is required.', wraplength=440).pack(anchor='w', pady=(10, 18))
+    ttk.Label(frame, text='Create your initial administrator login. On first sign-in you will choose your password and recovery answers.\nYour finances will be saved on this PC.', wraplength=440).pack(anchor='w', pady=(10, 18))
     fields = {}
     for key, label in [('username', 'Username'), ('password', 'Password (at least 12 characters)'), ('confirm', 'Confirm password')]:
         ttk.Label(frame, text=label).pack(anchor='w')
@@ -96,6 +109,9 @@ def local_server(folder):
     app.DATA = folder
     # Desktop always uses loopback HTTP, regardless of Docker shell settings.
     os.environ['COOKIE_SECURE'] = 'false'
+    app.migration.migrate_all(folder)
+    if needs_setup(folder): raise RuntimeError('Create the administrator account before starting Spearmint.')
+    auth.init(folder,'unused-existing-account-password')
     app.init()
     server = app.ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -115,6 +131,7 @@ def smoke_test():
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)
         auth.init(folder, 'smoke-only-password-123', 'admin')
+        auth.finish_setup(folder,1,1,'smoke-only-password-123',['test answer one','test city','test friend'])
         with local_server(folder) as server:
             client = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=10)
             for path in ['/', '/app.js', '/csv-reader.js', '/style.css', '/spearmint-logo.png', '/health']:
@@ -143,6 +160,7 @@ def ui_smoke_test():
         auth.init(folder, 'smoke-only-password-123', 'admin')
         with local_server(folder) as server:
             window = webview.create_window('Spearmint UI check', f'http://127.0.0.1:{server.server_port}')
+            window_icon(window)
             loaded = Event()
             outcome = []
             window.events.loaded += loaded.set
@@ -154,6 +172,25 @@ def ui_smoke_test():
                         raise RuntimeError('Desktop title did not match.')
                     if not window.evaluate_js("!!document.querySelector('#login-form')"):
                         raise RuntimeError('Login form was not rendered.')
+                    import time
+                    def wait_for(script):
+                        deadline=time.monotonic()+45
+                        while time.monotonic()<deadline:
+                            if window.evaluate_js(script): return
+                            time.sleep(0.2)
+                        raise RuntimeError('Desktop workflow timed out: '+script)
+                    window.evaluate_js("document.querySelector('#login-form').elements.username.value='admin';document.querySelector('#login-form').elements.password.value='smoke-only-password-123';document.querySelector('#login-form').requestSubmit();")
+                    wait_for("!document.querySelector('#account-setup').hidden")
+                    window.evaluate_js("const f=document.querySelector('#setup-form');f.elements.password.value='chosen-password-123';f.elements.confirm.value='chosen-password-123';['Middle','City','Friend'].forEach((v,i)=>f.elements['answer'+i].value=v);f.requestSubmit();")
+                    wait_for("!document.querySelector('#login').hidden")
+                    window.evaluate_js("document.querySelector('#forgot-password').click();document.querySelector('#recovery-start').elements.username.value='admin';document.querySelector('#recovery-start').requestSubmit();")
+                    wait_for("!document.querySelector('#recovery-verify').hidden")
+                    window.evaluate_js("document.querySelectorAll('#recovery-questions input').forEach(e=>e.value=['MIDDLE','CITY','FRIEND'][Number(e.name)]);document.querySelector('#recovery-verify').requestSubmit();")
+                    wait_for("!document.querySelector('#recovery-reset').hidden")
+                    window.evaluate_js("const f=document.querySelector('#recovery-reset');f.elements.password.value='recovered-password-123';f.elements.confirm.value='recovered-password-123';f.requestSubmit();")
+                    wait_for("!document.querySelector('#login').hidden")
+                    window.evaluate_js("document.querySelector('#login-form').elements.username.value='admin';document.querySelector('#login-form').elements.password.value='recovered-password-123';document.querySelector('#login-form').requestSubmit();")
+                    wait_for("!document.querySelector('#shell').hidden")
                     outcome.append(True)
                 finally:
                     window.destroy()
@@ -173,13 +210,16 @@ def main():
         return smoke_test()
     if sys.platform != 'win32':
         raise RuntimeError('The desktop edition currently supports Windows 11 only.')
+    import ctypes
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Spearmint.Desktop')
     folder = data_path()
     with single_instance(folder.parent):
         if needs_setup(folder) and not setup_account(folder):
             return 0
         import webview
         with local_server(folder) as server:
-            webview.create_window('Spearmint', f'http://127.0.0.1:{server.server_port}', width=1280, height=900, min_size=(780, 600))
+            window = webview.create_window('Spearmint', f'http://127.0.0.1:{server.server_port}', width=1280, height=900, min_size=(780, 600))
+            window_icon(window)
             # Ephemeral browser session; the financial data remains in SQLite.
             webview.start(gui='edgechromium', private_mode=True)
     return 0
@@ -196,6 +236,7 @@ if __name__ == '__main__':
         from tkinter import Tk, messagebox
         root = Tk()
         root.withdraw()
+        if icon_path().exists(): root.iconbitmap(str(icon_path()))
         messagebox.showerror('Spearmint could not start', 'Check that Microsoft Edge WebView2 Runtime is installed and your Spearmint data folder is writable.\n\n' + str(sys.exc_info()[1]))
         root.destroy()
         sys.exit(1)

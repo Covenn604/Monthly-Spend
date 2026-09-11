@@ -12,3 +12,4 @@ build/
 dist/
 *.spec
 desktop/WebView2Setup.exe
+desktop/spearmint.ico

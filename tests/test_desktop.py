@@ -35,6 +35,6 @@ class DesktopTests(unittest.TestCase):
                     response.read()
                     client.close()
                 self.assertEqual(server.fileno(), -1)
-                self.assertTrue((folder / 'monthly-spend.sqlite3').exists())
+                self.assertTrue((folder / 'spearmint.sqlite3').exists())
         finally:
             app.DATA = old_data

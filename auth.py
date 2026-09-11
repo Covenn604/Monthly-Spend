@@ -1,6 +1,9 @@
 """Persistent local accounts for Spearmint; server administrators remain trusted."""
 import hashlib
 import hmac
+import json
+import time
+import unicodedata
 import re
 import secrets
 import shutil
@@ -35,12 +38,18 @@ def verify(password,encoded):
     except (ValueError,TypeError): return False
 
 def public(row):
-    return {k:row[k] for k in ('id','username','is_admin','enabled','version')}
+    return {k:row[k] for k in ('id','username','is_admin','enabled','version','setup_required')}
 
 def init(data_dir,password,admin_username='admin'):
     data_dir.mkdir(parents=True,exist_ok=True)
     with connection(data_dir) as c:
         c.execute('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,is_admin INTEGER NOT NULL DEFAULT 0,enabled INTEGER NOT NULL DEFAULT 1,version INTEGER NOT NULL DEFAULT 1)')
+        columns={r['name'] for r in c.execute('PRAGMA table_info(users)')}
+        if 'setup_required' not in columns: c.execute('ALTER TABLE users ADD COLUMN setup_required INTEGER NOT NULL DEFAULT 1')
+        if 'recovery_answers' not in columns: c.execute('ALTER TABLE users ADD COLUMN recovery_answers TEXT')
+        c.execute('CREATE TABLE IF NOT EXISTS recovery_tokens(token TEXT PRIMARY KEY,user_id INTEGER,version INTEGER,questions TEXT,expires REAL,verified INTEGER NOT NULL DEFAULT 0,name_key TEXT)')
+        c.execute('CREATE TABLE IF NOT EXISTS recovery_attempts(scope TEXT,created REAL)')
+        c.execute('CREATE INDEX IF NOT EXISTS recovery_attempt_scope ON recovery_attempts(scope,created)')
         if not c.execute('SELECT 1 FROM users LIMIT 1').fetchone():
             c.execute('INSERT INTO users(id,username,password_hash,is_admin) VALUES (1,?,?,1)',(username(admin_username),password_hash(password)))
 
@@ -82,7 +91,7 @@ def manage(data_dir,key,action,password=None):
         row=c.execute('SELECT * FROM users WHERE id=?',(key,)).fetchone()
         if not row: raise ValueError('User not found.')
         if row['is_admin']: raise ValueError('Use your own password settings to manage the administrator.')
-        if action=='reset_password': c.execute('UPDATE users SET password_hash=?,version=version+1 WHERE id=?',(encoded,key))
+        if action=='reset_password': c.execute('UPDATE users SET password_hash=?,version=version+1,setup_required=1 WHERE id=?',(encoded,key))
         else: c.execute('UPDATE users SET enabled=?,version=version+1 WHERE id=?',(int(action=='enable'),key))
 
 
@@ -104,3 +113,95 @@ def delete_user(data_dir,key,confirmation):
         raise ValueError('Data deletion could not finish. The user is disabled. Check data-folder permissions and retry deleting the user.') from error
     with connection(data_dir) as c:
         c.execute('DELETE FROM users WHERE id=?',(key,))
+
+
+QUESTIONS = ["What is your mother's middle name?", "What was the name of the town or city where you were born?", "What was the first and last name of your childhood best friend?"]
+
+
+def answer_hash(answer,salt=None):
+    if not isinstance(answer,str) or not 1<=len(answer)<=256 or not answer.strip():
+        raise ValueError('Each security answer must contain between 1 and 256 characters.')
+    normalized=unicodedata.normalize('NFKC',answer).strip().casefold()
+    salt=salt or secrets.token_hex(16)
+    digest=hashlib.pbkdf2_hmac('sha256',normalized.encode(),bytes.fromhex(salt),600000).hex()
+    return salt+':'+digest
+
+
+def finish_setup(data_dir,key,version,password,answers):
+    encoded=password_hash(password)
+    if not isinstance(answers,list) or len(answers)!=3: raise ValueError('Answer all three security questions.')
+    hashes=[answer_hash(a) for a in answers]
+    with connection(data_dir) as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute('SELECT * FROM users WHERE id=?',(key,)).fetchone()
+        if not row or not row['enabled'] or row['version']!=version or not row['setup_required']:
+            raise ValueError('Setup session expired. Sign in again.')
+        c.execute('UPDATE users SET password_hash=?,recovery_answers=?,setup_required=0,version=version+1 WHERE id=?',(encoded,json.dumps(hashes),key))
+        c.execute('DELETE FROM recovery_tokens WHERE user_id=?',(key,))
+
+
+def _limit(c,scope,limit):
+    now=time.time()
+    c.execute('DELETE FROM recovery_attempts WHERE created<?',(now-900,))
+    if c.execute('SELECT COUNT(*) FROM recovery_attempts WHERE scope=?',(scope,)).fetchone()[0]>=limit:
+        raise ValueError('Too many recovery attempts. Try again in 15 minutes.')
+    c.execute('INSERT INTO recovery_attempts VALUES (?,?)',(scope,now))
+
+
+def _token_key(token):
+    return hashlib.sha256(str(token or '').encode()).hexdigest()
+
+
+def recovery_start(data_dir,name,ip):
+    name=str(name or '').strip().lower()[:100]
+    name_key=_token_key(name)
+    token=secrets.token_urlsafe(32)
+    questions=secrets.SystemRandom().sample(range(3),2)
+    with connection(data_dir) as c:
+        c.execute('BEGIN IMMEDIATE')
+        _limit(c,'ip:'+ip,20)
+        _limit(c,'name:'+name_key,5)
+        c.execute('DELETE FROM recovery_tokens WHERE expires<?',(time.time(),))
+        row=c.execute('SELECT * FROM users WHERE username=?',(name,)).fetchone()
+        valid=row and row['enabled'] and row['recovery_answers']
+        # Identical response shape for missing, disabled, and unenrolled accounts.
+        c.execute('INSERT INTO recovery_tokens VALUES (?,?,?,?,?,?,?)',(_token_key(token),row['id'] if valid else None,row['version'] if valid else None,json.dumps(questions),time.time()+600,0,name_key))
+    return {'token':token,'questions':[{'id':q,'text':QUESTIONS[q]} for q in questions]}
+
+
+def recovery_verify(data_dir,token,answers,ip):
+    reset=secrets.token_urlsafe(32)
+    success=False
+    with connection(data_dir) as c:
+        c.execute('BEGIN IMMEDIATE')
+        _limit(c,'verify-ip:'+ip,20)
+        challenge=c.execute('SELECT * FROM recovery_tokens WHERE token=? AND verified=0',(_token_key(token),)).fetchone()
+        if challenge:
+            _limit(c,'verify-name:'+challenge['name_key'],5)
+            c.execute('DELETE FROM recovery_tokens WHERE token=?',(_token_key(token),))
+        row=c.execute('SELECT * FROM users WHERE id=?',(challenge['user_id'],)).fetchone() if challenge else None
+        valid=bool(challenge and challenge['expires']>time.time() and row and row['enabled'] and row['version']==challenge['version'] and row['recovery_answers'])
+        hashes=json.loads(row['recovery_answers']) if valid else ['0'*32+':'+'0'*64]*3
+        questions=json.loads(challenge['questions']) if challenge else [0,1]
+        checks=[]
+        for q in questions:
+            answer=answers.get(str(q),'') if isinstance(answers,dict) else ''
+            try: checks.append(hmac.compare_digest(answer_hash(answer,hashes[q].split(':')[0]),hashes[q]))
+            except (ValueError,TypeError): checks.append(False)
+        success=valid and all(checks)
+        if success:
+            c.execute('INSERT INTO recovery_tokens VALUES (?,?,?,?,?,?,?)',(_token_key(reset),row['id'],row['version'],'[]',time.time()+300,1,challenge['name_key']))
+    if not success: raise ValueError('Recovery could not be verified. Start again and check both answers.')
+    return {'reset_token':reset}
+
+
+def recovery_reset(data_dir,token,password):
+    encoded=password_hash(password)
+    with connection(data_dir) as c:
+        c.execute('BEGIN IMMEDIATE')
+        ticket=c.execute('SELECT * FROM recovery_tokens WHERE token=? AND verified=1',(_token_key(token),)).fetchone()
+        row=c.execute('SELECT * FROM users WHERE id=?',(ticket['user_id'],)).fetchone() if ticket else None
+        if not ticket or ticket['expires']<time.time() or not row or not row['enabled'] or row['version']!=ticket['version']:
+            raise ValueError('Password reset expired. Start recovery again.')
+        c.execute('UPDATE users SET password_hash=?,setup_required=0,version=version+1 WHERE id=?',(encoded,row['id']))
+        c.execute('DELETE FROM recovery_tokens WHERE user_id=?',(row['id'],))

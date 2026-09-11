@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.4.9** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.5.0** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -25,10 +25,10 @@ Spearmint is an independent project and is not affiliated with Mint or Intuit. I
 
 Spearmint also has a standalone Windows 11 x64 installer. It bundles Python, the backend, and the interface; Docker and a separate server are not required. Both editions share the same application features, but their databases are independent and do not synchronize.
 
-1. Open the [Spearmint v0.4.9 release](https://github.com/Covenn604/spearmint/releases/tag/0.4.9) and download `Spearmint-0.4.9-Windows-x64-Setup.exe` from **Assets**.
-2. Run `Spearmint-0.4.9-Windows-x64-Setup.exe`. It installs for the current Windows user and offers a desktop shortcut.
+1. Open the [Spearmint Releases](https://github.com/Covenn604/spearmint/releases) and download the `Spearmint-<version>-Windows-x64-Setup.exe` installer from **Assets**.
+2. Run the `Spearmint-<version>-Windows-x64-Setup.exe` installer. It installs for the current Windows user and offers a desktop shortcut.
 3. Open Spearmint and create your administrator username and password in the first-run setup window.
-4. Sign in and add accounts or import CSVs as usual.
+4. Sign in, complete your password and security questions, then add accounts or import CSVs as usual.
 
 If Microsoft WebView2 Runtime is missing, the installer runs Microsoft's signed bootstrapper; this requires internet access. Normal financial tracking works offline. Initial builds are unsigned and Windows may show a publisher/reputation warning; code signing is not configured yet.
 
@@ -36,7 +36,7 @@ Financial data is stored in `%LOCALAPPDATA%\Spearmint\data`. The backend listens
 
 To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. There is no automatic updater or synchronization in this initial desktop edition.
 
-The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Windows installers are distributed through [GitHub Releases](https://github.com/Covenn604/spearmint/releases/tag/0.4.9).
+The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Windows installers are distributed through [GitHub Releases](https://github.com/Covenn604/spearmint/releases).
 
 ## Install with Docker Compose
 
@@ -76,7 +76,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.4.9` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.0` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
@@ -262,11 +262,31 @@ To permanently remove a user, select them under **Manage an existing user**, cho
 
 Each user has separate financial records and CSV formats. There are no shared household workspaces. The administrator manages logins but has no interface to browse another user's finances; the server owner and anyone able to reset passwords remain trusted administrators.
 
-Passwords are stored as salted PBKDF2-SHA256 hashes. Usernames are case-insensitive, and passwords require 12–1,024 characters. There is no public registration or email password recovery. Once initialized, changing `APP_PASSWORD` or `ADMIN_USERNAME` in the environment does not replace stored credentials.
+Passwords are stored as salted PBKDF2-SHA256 hashes. Usernames are case-insensitive, and passwords require 12–1,024 characters. There is no public registration or email-based password recovery. Self-service recovery uses the security questions described below. Once initialized, changing `APP_PASSWORD` or `ADMIN_USERNAME` in the environment does not replace stored credentials.
 
 Sessions last 12 hours and end on server restart. Password changes and disabling a user invalidate their sessions.
 
 Spearmint uses Python's standard-library HTTP server and is intended for a trusted LAN. Use your VPN or an HTTPS reverse proxy for remote access; set `COOKIE_SECURE=true` for HTTPS. HTTP does not encrypt traffic, and database files are not encrypted at rest. Protect the server and its backups. Do not commit statements, passwords, or financial databases to this repository.
+
+### First-login setup and password recovery
+
+On their first login, every user—including the administrator—must choose a password and answer all three questions before accessing financial records. Existing users upgrading from an earlier release enroll on their next login. Administrator password resets require the affected user to complete setup again.
+
+1. What is your mother's middle name?
+2. What was the name of the town or city where you were born?
+3. What was the first and last name of your childhood best friend?
+
+Answers are case-insensitive and ignore leading/trailing whitespace. They are stored as individually salted hashes, never readable answer text. Remember the answers you supply; they grant access to password recovery.
+
+Choose **Forgot password?** on the login screen, enter your username, and answer the two randomly selected questions. After both answers are verified, choose and confirm a new password. Question challenges expire after ten minutes; verified reset tokens expire after five minutes and can be used only once. Recovery attempts are rate-limited by account and source IP. A reset invalidates previous login sessions. Disabled users cannot recover their accounts.
+
+### Upgrade to v0.5.0
+
+Stop all old app instances and back up the complete data folder before upgrading. Financial databases are automatically migrated from `monthly-spend.sqlite3` to `spearmint.sqlite3`, including additional users' databases. SQLite checkpoints committed journal data before the rename. The login database remains `users.sqlite3`.
+
+If both old and new financial filenames exist in one folder, startup refuses to overwrite either. Restore or reconcile the correct complete backup before retrying. Do not manually rename a database while the app is running. After migration, older Spearmint releases cannot find the renamed financial files; rolling back requires restoring the complete pre-upgrade backup with the old release.
+
+The Windows executable, installer, shortcuts, setup window, and application window now use the Spearmint leaf icon. Windows may cache existing pinned shortcuts; unpin and re-pin after upgrading if an old icon remains.
 
 ## Back up and update
 
@@ -277,8 +297,8 @@ Back up the **entire `/data` directory**. It includes:
 | Path inside the container | Contents |
 | --- | --- |
 | `/data/users.sqlite3` | User logins and password hashes. |
-| `/data/monthly-spend.sqlite3` | Original administrator's finances. |
-| `/data/users/<id>/monthly-spend.sqlite3` | Each additional user's finances. |
+| `/data/spearmint.sqlite3` | Original administrator's finances. |
+| `/data/users/<id>/spearmint.sqlite3` | Each additional user's finances. |
 
 Preserve the directory structure and any SQLite journal files. The transaction CSV export is useful for analysis, but omits opening balances, user accounts, mappings, rules, and transfer links; it is not a full backup.
 
@@ -313,7 +333,7 @@ Keep the same data mount and user/group permissions. If upgrading from the old C
 
 Use `ghcr.io/covenn604/spearmint:latest` for current images and `https://github.com/Covenn604/spearmint.git` for the repository remote.
 
-The Compose project, service, and container are now named `spearmint`, with `spearmint-data` as the default volume key. Existing financial databases still use `monthly-spend.sqlite3`; the app reads those filenames directly, so do not rename the database files manually.
+The Compose project, service, and container are now named `spearmint`, with `spearmint-data` as the default volume key. Financial databases use `spearmint.sqlite3` from v0.5.0 onward; existing files are migrated automatically as described above.
 
 Before replacing an older Compose configuration:
 

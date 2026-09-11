@@ -1,4 +1,4 @@
-#define AppVersion "0.4.9"
+#define AppVersion "0.5.0"
 [Setup]
 AppId={{50AE1652-4D38-47A3-9C87-673C2EB13D94}
 AppName=Spearmint
@@ -14,6 +14,7 @@ OutputBaseFilename=Spearmint-{#AppVersion}-Windows-x64-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=spearmint.ico
 UninstallDisplayIcon={app}\Spearmint.exe
 CloseApplications=yes
 [Tasks]

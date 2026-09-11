@@ -1,6 +1,7 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let recoveryToken='',resetToken='';
 let state, report, csvText='', csvHeaders=[], importPreview=null, view='overview', noticeTimer;
 let allTransactions=[], selectedTransactions=new Set(), scopeRequest=0, headerRequest=0, previewRequest=0, importProfileAccount=null;
 function transactionRows(){return $('#transaction-scope').value==='all'?allTransactions:(report?.transactions||[]);}
@@ -8,6 +9,7 @@ function syncMonthControl(){$('#month').disabled=view==='transactions'&&$('#tran
 const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 $('#month').value=localDay().slice(0,7);
 function clearPrivateState(){
+ recoveryToken='';resetToken='';$('#setup-form').reset();$('#account-setup').hidden=true;$('#recovery').hidden=true;
  importProfileAccount=null;++previewRequest;
  state=null;report=null;allTransactions=[];csvText='';csvHeaders=[];importPreview=null;selectedTransactions.clear();scopeRequest++;headerRequest++;
  for(const id of ['tx-body','review-body','import-result','account-list','category-chips','rules-list','users-list','category-list','insights','trend','overview-balances','profile-identity'])$('#'+id).replaceChildren();
@@ -23,7 +25,7 @@ function moneyHtml(cents){return `<span class="${cents<0?'money-negative':'money
 
 function opts(items,value='',blank='Choose…'){return `<option value="">${esc(blank)}</option>`+items.map(x=>`<option value="${esc(x.id)}" ${String(x.id)===String(value)?'selected':''}>${esc(x.name)}</option>`).join('');}
 function setView(name){view=name;document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!==name);document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('#page-title').textContent={overview:'Monthly overview',transactions:'Transactions',import:'Import transactions',accounts:'Accounts & categories',settings:'Profile & users'}[name];syncMonthControl();}
-async function refresh(){state=await api('/api/state');report=await api('/api/month?month='+encodeURIComponent($('#month').value));if($('#transaction-scope').value==='all')allTransactions=(await api('/api/transactions')).transactions;$('#login').hidden=true;$('#shell').hidden=false;renderState();renderOverview();renderTransactions();await renderUsers();if(importProfileAccount!==$('#import-account').value)await selectAccountProfile();else updateProfileControls();}
+async function refresh(){const session=await api('/api/auth-state');if(session.user.setup_required){showSetup(session.questions);return;}$('#account-setup').hidden=true;state=await api('/api/state');report=await api('/api/month?month='+encodeURIComponent($('#month').value));if($('#transaction-scope').value==='all')allTransactions=(await api('/api/transactions')).transactions;$('#login').hidden=true;$('#shell').hidden=false;renderState();renderOverview();renderTransactions();await renderUsers();if(importProfileAccount!==$('#import-account').value)await selectAccountProfile();else updateProfileControls();}
 function renderState(){
  $('#currency-note').textContent=`${state.user.username} · ${state.currency}`;
  for(const id of ['tx-account','tx-destination','import-account']){const el=$('#'+id),old=el.value;el.innerHTML=opts(state.accounts,old);if(!el.value&&state.accounts.length)el.value=state.accounts[0].id;}
@@ -150,6 +152,40 @@ $('#manage-user-form').onsubmit=e=>{e.preventDefault();task(async()=>{const data
  await api('/api/users/'+data.user_id,'POST',{action:data.action,password:data.password});
 }
 $('#reset-password').value='';await renderUsers();notify(data.action==='delete'?'User and saved financial data deleted.':'User updated.');},e.submitter);};
+function showSetup(questions){
+ clearPrivateState();$('#login').hidden=true;$('#shell').hidden=true;$('#account-setup').hidden=false;
+ $('#setup-questions').innerHTML=questions.map((q,i)=>`<label>${esc(q)}<input name="answer${i}" type="password" maxlength="256" autocomplete="off" required></label>`).join('');
+}
+function backToLogin(){
+ recoveryToken='';resetToken='';
+ for(const id of ['recovery-start','recovery-verify','recovery-reset'])$('#'+id).reset();
+ $('#recovery-questions').replaceChildren();$('#recovery-error').textContent='';
+ $('#recovery').hidden=true;$('#account-setup').hidden=true;$('#shell').hidden=true;$('#login').hidden=false;
+}
+$('#setup-signout').onclick=()=>task(async()=>{await api('/api/logout','POST',{});clearPrivateState();backToLogin();});
+$('#setup-form').onsubmit=e=>{e.preventDefault();task(async()=>{
+ const f=e.target.elements;if(f.password.value!==f.confirm.value)throw Error('The passwords do not match.');
+ await api('/api/complete-setup','POST',{new_password:f.password.value,answers:[0,1,2].map(i=>f['answer'+i].value)});
+ e.target.reset();backToLogin();notify('Account setup complete. Sign in with your chosen password.');
+},e.submitter);};
+$('#forgot-password').onclick=()=>{backToLogin();$('#login').hidden=true;$('#recovery').hidden=false;$('#recovery-start').hidden=false;$('#recovery-verify').hidden=true;$('#recovery-reset').hidden=true;};
+$('#recovery-back').onclick=backToLogin;
+$('#recovery-start').onsubmit=e=>{e.preventDefault();task(async()=>{
+ $('#recovery-error').textContent='';const result=await api('/api/recovery/start','POST',{username:e.target.elements.username.value});
+ recoveryToken=result.token;resetToken='';$('#recovery-start').hidden=true;$('#recovery-verify').hidden=false;
+ $('#recovery-questions').innerHTML=result.questions.map(q=>`<label>${esc(q.text)}<input name="${q.id}" type="password" maxlength="256" autocomplete="off" required></label>`).join('');
+},e.submitter);};
+$('#recovery-verify').onsubmit=e=>{e.preventDefault();task(async()=>{
+ try{
+  const result=await api('/api/recovery/verify','POST',{token:recoveryToken,answers:Object.fromEntries(new FormData(e.target))});
+  resetToken=result.reset_token;$('#recovery-verify').hidden=true;$('#recovery-reset').hidden=false;
+ }catch(error){$('#recovery-error').textContent=error.message;$('#recovery-start').hidden=false;$('#recovery-verify').hidden=true;}
+ finally{recoveryToken='';e.target.reset();}
+},e.submitter);};
+$('#recovery-reset').onsubmit=e=>{e.preventDefault();task(async()=>{
+ const f=e.target.elements;if(f.password.value!==f.confirm.value)throw Error('The passwords do not match.');
+ await api('/api/recovery/reset','POST',{reset_token:resetToken,new_password:f.password.value});backToLogin();notify('Password reset. Sign in with your new password.');
+},e.submitter);};
 $('#login-form').onsubmit=e=>{e.preventDefault();task(async()=>{await api('/api/login','POST',{username:e.target.username.value,password:e.target.password.value});e.target.reset();await refresh();},e.submitter);};
 $('#logout').onclick=()=>task(async()=>{await api('/api/logout','POST',{});clearPrivateState();$('#shell').hidden=true;$('#login').hidden=false;});
 $('nav').onclick=e=>{const b=e.target.closest('[data-view]');if(b)setView(b.dataset.view);};

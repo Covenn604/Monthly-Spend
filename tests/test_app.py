@@ -147,6 +147,8 @@ class HttpTests(DatabaseFixture):
             self.assertEqual(request('/api/state')[0],401)
             self.assertEqual(request('/api/login','POST',{'username':'admin','password':app.PASSWORD},False)[0],403)
             self.assertEqual(request('/api/login','POST',{'username':'admin','password':app.PASSWORD})[0],200)
+            self.assertEqual(request('/api/complete-setup','POST',{'new_password':app.PASSWORD,'answers':['test middle','test city','test friend']})[0],200)
+            self.assertEqual(request('/api/login','POST',{'username':'admin','password':app.PASSWORD})[0],200)
             tx={'account_id':1,'date':'2026-08-12','payee':'Visa payment','amount':'20.00','kind':'transfer','destination_id':2}
             self.assertEqual(request('/api/transactions','POST',tx)[0],200)
             s=request('/api/month?month=2026-08')[1]

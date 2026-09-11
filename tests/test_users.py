@@ -38,8 +38,11 @@ class MultiUserTests(unittest.TestCase):
         try: return status,json.loads(body)
         except ValueError:return status,body.decode()
     def login(self,who,password):
-        status,_=self.req('/api/login','POST',{'username':who,'password':password},who)
+        status,payload=self.req('/api/login','POST',{'username':who,'password':password},who)
         self.assertEqual(status,200)
+        if payload.get('setup_required'):
+            self.assertEqual(self.req('/api/complete-setup','POST',{'new_password':password,'answers':['test middle','test city','test friend']},who)[0],200)
+            self.assertEqual(self.req('/api/login','POST',{'username':who,'password':password},who)[0],200)
     def add_user(self,who='alice'):
         status,payload=self.req('/api/users','POST',{'username':who,'password':USER_PASSWORD})
         self.assertEqual(status,200);self.login(who,USER_PASSWORD)
@@ -58,7 +61,7 @@ class MultiUserTests(unittest.TestCase):
         self.assertEqual(self.req('/api/transactions')[1]['transactions'][0]['note'],'Legacy note')
     def test_users_isolated_for_reads_writes_imports_and_rules(self):
         alice=self.add_user()
-        self.assertTrue((app.DATA/'users'/str(alice)/'monthly-spend.sqlite3').exists())
+        self.assertTrue((app.DATA/'users'/str(alice)/'spearmint.sqlite3').exists())
         personal=self.req('/api/state',who='alice')[1]
         self.assertEqual(personal['accounts'],[]);self.assertEqual(personal['profiles'],[]);self.assertEqual(personal['rules'],[])
         self.assertEqual(self.req('/api/transactions',who='alice')[1]['transactions'],[])

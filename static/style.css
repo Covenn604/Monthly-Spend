@@ -17,3 +17,5 @@ button.danger{background:#b72f45}#category-dialog hr{border:0;border-top:1px sol
 .money-negative{color:var(--red);font-variant-numeric:tabular-nums}
 
 .transaction-notes{white-space:pre-wrap;overflow-wrap:anywhere;min-width:160px;max-width:320px;color:var(--muted)}
+
+#setup-questions,#recovery-questions{display:grid;gap:15px}.login>.secondary{margin-top:16px}

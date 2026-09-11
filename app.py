@@ -1,5 +1,6 @@
 """Spearmint: independent, self-hosted spending tracker inspired by Mint."""
 import auth
+import migration
 from contextvars import ContextVar
 import calendar
 import csv
@@ -47,7 +48,7 @@ def db():
                 raise Invalid('This user is no longer active.')
         folder = DATA if user_id == 1 else DATA / 'users' / str(user_id)
         folder.mkdir(parents=True, exist_ok=True)
-        con = sqlite3.connect(folder / 'monthly-spend.sqlite3', timeout=15)
+        con = sqlite3.connect(migration.financial_database(folder), timeout=15)
         con.row_factory = sqlite3.Row
         con.execute('PRAGMA foreign_keys=ON')
         try:
@@ -441,6 +442,14 @@ class Handler(BaseHTTPRequestHandler):
                 if length<0 or length>4_000_000: return self.send(413,{'error':'Request exceeds 4 MB.'})
                 data=json.loads(self.rfile.read(length) or b'{}')
                 if not isinstance(data,dict): raise Invalid('Expected an object.')
+            if path.startswith('/api/recovery/') and method=='POST':
+                ip=self.client_address[0]
+                if path=='/api/recovery/start': return self.send(200,auth.recovery_start(DATA,data.get('username'),ip))
+                if path=='/api/recovery/verify': return self.send(200,auth.recovery_verify(DATA,data.get('token'),data.get('answers'),ip))
+                if path=='/api/recovery/reset':
+                    auth.recovery_reset(DATA,data.get('reset_token'),data.get('new_password'))
+                    return self.send(200,{'ok':True})
+                return self.send(404,{'error':'Not found.'})
             if path=='/api/login' and method=='POST':
                 now=time.time()
                 ip=self.client_address[0]
@@ -460,9 +469,16 @@ class Handler(BaseHTTPRequestHandler):
                     SESSIONS[token]={'user_id':user['id'],'version':user['version'],'expires':now+43200}
                     ATTEMPTS.pop(ip,None)
                 secure='; Secure' if os.environ.get('COOKIE_SECURE')=='true' else ''
-                return self.send(200,{'ok':True},cookie=f'session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}')
+                return self.send(200,{'ok':True,'setup_required':bool(user['setup_required'])},cookie=f'session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}')
             if not self.authenticated(): return self.send(401,{'error':'Please sign in.'})
             CURRENT_USER.set(self.user['id'])
+            if path=='/api/auth-state' and method=='GET':
+                return self.send(200,{'user':self.user,'questions':auth.QUESTIONS})
+            if path=='/api/complete-setup' and method=='POST':
+                auth.finish_setup(DATA,self.user['id'],self.user['version'],data.get('new_password'),data.get('answers'))
+                return self.send(200,{'ok':True},cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+            if self.user['setup_required'] and path!='/api/logout':
+                return self.send(403,{'error':'Complete your password and security questions before continuing.','setup_required':True})
             if path=='/api/password' and method=='POST':
                 auth.change_password(DATA,self.user['id'],data.get('current_password'),data.get('new_password'))
                 return self.send(200,{'ok':True},cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
@@ -631,6 +647,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
     if len(PASSWORD)<12:
         raise SystemExit('Set APP_PASSWORD to at least 12 characters before starting.')
+    migration.migrate_all(DATA)
     init()
     auth.init(DATA,PASSWORD,ADMIN_USERNAME)
     server=ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8080'))),Handler)
