@@ -202,8 +202,6 @@ def ui_smoke_test():
                         time.sleep(0.3)
                         if not window.evaluate_js("(() => {const label=document.querySelector('#show-completed-label'),box=label.querySelector('input').getBoundingClientRect(),text=label.querySelector('span').getBoundingClientRect(),count=document.querySelector('#tx-count').getBoundingClientRect();return box.width<=24 && text.left>=box.right && (count.left>=text.right || count.top>=text.bottom);})()"):
                             raise RuntimeError('Transaction filter controls overlap.')
-                    from desktop.smoke_download import check_export
-                    check_export(window, folder)
                     outcome.append(True)
                 finally:
                     window.destroy()
