@@ -13,6 +13,7 @@ if not getattr(sys, 'frozen', False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app
 import auth
+from desktop.export_api import ExportApi
 
 VERSION = '0.5.1'
 
@@ -154,13 +155,14 @@ def smoke_test():
 
 def ui_smoke_test():
     import webview
-    webview.settings['ALLOW_DOWNLOADS'] = True
     from threading import Event
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)
         auth.init(folder, 'smoke-only-password-123', 'admin')
         with local_server(folder) as server:
-            window = webview.create_window('Spearmint UI check', f'http://127.0.0.1:{server.server_port}')
+            export_api = ExportApi()
+            window = webview.create_window('Spearmint UI check', f'http://127.0.0.1:{server.server_port}', js_api=export_api)
+            export_api._window = window
             window_icon(window)
             loaded = Event()
             outcome = []
@@ -228,10 +230,10 @@ def main():
         if needs_setup(folder) and not setup_account(folder):
             return 0
         import webview
-        # WebView2 opens a native Save As dialog for transaction downloads.
-        webview.settings['ALLOW_DOWNLOADS'] = True
         with local_server(folder) as server:
-            window = webview.create_window('Spearmint', f'http://127.0.0.1:{server.server_port}', width=1280, height=900, min_size=(780, 600))
+            export_api = ExportApi()
+            window = webview.create_window('Spearmint', f'http://127.0.0.1:{server.server_port}', width=1280, height=900, min_size=(780, 600), js_api=export_api)
+            export_api._window = window
             window_icon(window)
             # Ephemeral browser session; the financial data remains in SQLite.
             webview.start(gui='edgechromium', private_mode=True)
