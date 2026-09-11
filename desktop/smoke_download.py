@@ -73,10 +73,22 @@ def check_export(window, folder):
     if len(edits) != 1:
         raise RuntimeError('Could not identify the Save As filename field.')
     destination = folder / 'export-check.csv'
-    value = ctypes.create_unicode_buffer(str(destination))
-    user32.SendMessageW(edits[0], 0x000C, 0, ctypes.cast(value, ctypes.c_void_p).value)  # WM_SETTEXT
-    user32.PostMessageW(dialog, 0x0111, 1, 0)  # Save
+    # Type into the dialog as a user would so its filename-change handlers run.
+    from System.Windows.Forms import SendKeys
+    bounds = wintypes.RECT()
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetWindowRect(edits[0], ctypes.byref(bounds))
+    user32.SetForegroundWindow(dialog)
+    user32.SetCursorPos((bounds.left + bounds.right) // 2, (bounds.top + bounds.bottom) // 2)
+    user32.mouse_event(0x0002, 0, 0, 0, 0)
+    user32.mouse_event(0x0004, 0, 0, 0, 0)
+    SendKeys.SendWait('^a')
+    SendKeys.SendWait(''.join('{'+c+'}' if c in '+^%~(){}[]' else c for c in str(destination)))
+    SendKeys.SendWait('{ENTER}')
     wait_for(lambda: not find_dialog())
-    wait_for(lambda: destination.exists() and destination.stat().st_size > 0)
+    try:
+        wait_for(lambda: destination.exists() and destination.stat().st_size > 0)
+    except RuntimeError as error:
+        raise RuntimeError('CSV save failed: '+str(window.evaluate_js("document.querySelector('#notice').textContent"))) from error
     if not destination.read_text(encoding='utf-8-sig').startswith('Date,Account,Payee,Amount,'):
         raise RuntimeError('The downloaded file is not the transaction CSV.')

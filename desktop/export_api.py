@@ -19,7 +19,7 @@ class ExportApi:
         temporary = None
         try:
             selected = self._window.create_file_dialog(
-                webview.SAVE_DIALOG, save_filename='spearmint-transactions.csv',
+                webview.FileDialog.SAVE, save_filename='spearmint-transactions.csv',
                 file_types=('CSV files (*.csv)',),
             )
             if not selected:
