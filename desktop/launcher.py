@@ -14,7 +14,7 @@ if not getattr(sys, 'frozen', False):
 import app
 import auth
 
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 
 def icon_path():
     return app.ROOT/'static'/'spearmint.ico' if getattr(sys,'frozen',False) else Path(__file__).parent/'spearmint.ico'
@@ -154,6 +154,7 @@ def smoke_test():
 
 def ui_smoke_test():
     import webview
+    webview.settings['ALLOW_DOWNLOADS'] = True
     from threading import Event
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)
@@ -191,6 +192,16 @@ def ui_smoke_test():
                     wait_for("!document.querySelector('#login').hidden")
                     window.evaluate_js("document.querySelector('#login-form').elements.username.value='admin';document.querySelector('#login-form').elements.password.value='recovered-password-123';document.querySelector('#login-form').requestSubmit();")
                     wait_for("!document.querySelector('#shell').hidden")
+                    # Check the filter label at desktop and narrow window widths.
+                    window.evaluate_js("setView('transactions');document.querySelector('#transaction-scope').value='all';document.querySelector('#transaction-scope').dispatchEvent(new Event('change'));")
+                    wait_for("!document.querySelector('#show-completed-label').hidden")
+                    for width in (1280, 780):
+                        window.resize(width, 900)
+                        time.sleep(0.3)
+                        if not window.evaluate_js("(() => {const label=document.querySelector('#show-completed-label'),box=label.querySelector('input').getBoundingClientRect(),text=label.querySelector('span').getBoundingClientRect(),count=document.querySelector('#tx-count').getBoundingClientRect();return box.width<=24 && text.left>=box.right && (count.left>=text.right || count.top>=text.bottom);})()"):
+                            raise RuntimeError('Transaction filter controls overlap.')
+                    from desktop.smoke_download import check_export
+                    check_export(window, folder)
                     outcome.append(True)
                 finally:
                     window.destroy()
@@ -217,6 +228,8 @@ def main():
         if needs_setup(folder) and not setup_account(folder):
             return 0
         import webview
+        # WebView2 opens a native Save As dialog for transaction downloads.
+        webview.settings['ALLOW_DOWNLOADS'] = True
         with local_server(folder) as server:
             window = webview.create_window('Spearmint', f'http://127.0.0.1:{server.server_port}', width=1280, height=900, min_size=(780, 600))
             window_icon(window)

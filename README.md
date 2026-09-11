@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.5.0** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.5.1** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -34,7 +34,7 @@ If Microsoft WebView2 Runtime is missing, the installer runs Microsoft's signed 
 
 Financial data is stored in `%LOCALAPPDATA%\Spearmint\data`. The backend listens only on `127.0.0.1` using an available port and stops when the desktop window closes. Only one desktop instance may use that data folder at a time. Other devices cannot connect to the standalone edition; use Docker for server access.
 
-To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. There is no automatic updater or synchronization in this initial desktop edition.
+To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. **Export transactions** opens a Windows Save As dialog so you can choose the CSV filename and destination. There is no automatic updater or synchronization in this initial desktop edition.
 
 The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Windows installers are distributed through [GitHub Releases](https://github.com/Covenn604/spearmint/releases).
 
@@ -76,7 +76,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.0` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.1` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
@@ -280,7 +280,7 @@ Answers are case-insensitive and ignore leading/trailing whitespace. They are st
 
 Choose **Forgot password?** on the login screen, enter your username, and answer the two randomly selected questions. After both answers are verified, choose and confirm a new password. Question challenges expire after ten minutes; verified reset tokens expire after five minutes and can be used only once. Recovery attempts are rate-limited by account and source IP. A reset invalidates previous login sessions. Disabled users cannot recover their accounts.
 
-### Upgrade to v0.5.0
+### Upgrade from versions before v0.5.0
 
 Stop all old app instances and back up the complete data folder before upgrading. Financial databases are automatically migrated from `monthly-spend.sqlite3` to `spearmint.sqlite3`, including additional users' databases. SQLite checkpoints committed journal data before the rename. The login database remains `users.sqlite3`.
 
