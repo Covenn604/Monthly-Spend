@@ -39,12 +39,28 @@ def check_export(window, folder):
             time.sleep(0.1)
         raise RuntimeError('Native CSV export check timed out.')
 
-    window.evaluate_js("document.querySelector('#export').click()")
+    def click_export():
+        # A real mouse click supplies WebView2's user activation for repeat downloads.
+        rect = window.evaluate_js("(() => {const b=document.querySelector('#export');b.scrollIntoView();const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()")
+        point = wintypes.POINT(round(rect['x']), round(rect['y']))
+        handle = window.native.Handle.ToInt64()
+        user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.SetForegroundWindow(handle)
+        user32.ClientToScreen(handle, ctypes.byref(point))
+        user32.SetCursorPos(point.x, point.y)
+        user32.mouse_event(0x0002, 0, 0, 0, 0)
+        user32.mouse_event(0x0004, 0, 0, 0, 0)
+
+    window.resize(1000, 650)
+    window.move(0, 0)
+    time.sleep(0.5)
+    click_export()
     dialog = wait_for(find_dialog)
     user32.PostMessageW(dialog, 0x0111, 2, 0)  # Cancel
     wait_for(lambda: not find_dialog())
 
-    window.evaluate_js("document.querySelector('#export').click()")
+    click_export()
     dialog = wait_for(find_dialog)
     edits = []
     def visit_edit(handle, _):
