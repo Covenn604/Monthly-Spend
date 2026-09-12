@@ -266,6 +266,9 @@ def preview(c, data):
     result=[]
     suggestions=category_context(c)
     new_groups={}
+    category_names={}
+    for cat in c.execute('SELECT id,name FROM categories ORDER BY id'):
+        category_names.setdefault(merchant_key(cat['name']),cat['id'])
     def cell(row,key,required=False):
         idx=mapping.get(key)
         if idx is None or idx=='':
@@ -297,6 +300,12 @@ def preview(c, data):
                 if mapping.get('invert'): amount=-amount
             if not amount: raise Invalid('Zero amount.')
             tx=dict(account_id=account,date=day,payee=payee,amount=amount,kind='expense' if amount<0 else 'income',category_id=category(c,payee,suggestions) if amount<0 else None,note='',imported_id=None)
+            csv_category=clean(cell(row,'category'),80)
+            if csv_category:
+                key=merchant_key(csv_category)
+                tx['csv_category']=csv_category
+                tx['category_id']=None if key=='uncategorized' else category_names.get(key)
+                tx['new_category']=key!='uncategorized' and tx['category_id'] is None
             status=duplicate(c,tx)
             key=(day,' '.join(payee.casefold().split()),amount)
             if status=='new': new_groups.setdefault(key,[]).append(item)
@@ -353,9 +362,20 @@ def commit_import(c,data):
         if kind not in ('expense','income','refund','transfer'): raise Invalid('Invalid type.')
         if (kind=='expense' and tx['amount']>=0) or (kind in ('income','refund') and tx['amount']<=0): raise Invalid('Type conflicts with the amount sign.')
         tx['kind']=kind
-        cat=int(pick['category_id']) if pick.get('category_id') else None
+        selected_category=pick.get('category_id')
+        if selected_category=='__csv__':
+            name=tx.get('csv_category')
+            if not name or not tx.get('new_category'): raise Invalid('Invalid imported category selection.')
+            cat=None
+            if kind in ('expense','refund'):
+                cat=next((r['id'] for r in c.execute('SELECT id,name FROM categories ORDER BY id') if merchant_key(r['name'])==merchant_key(name)),None)
+                if cat is None: cat=c.execute('INSERT INTO categories(name) VALUES (?)',(name,)).lastrowid
+        else:
+            cat=int(selected_category) if selected_category else None
         if cat: existing(c,'categories',cat)
         tx['category_id']=cat if kind in ('expense','refund') else None
+        tx.pop('csv_category',None)
+        tx.pop('new_category',None)
         insert(c,tx,batch_id=batch)
         count+=1
     c.execute('DELETE FROM previews WHERE id=?',(data['token'],))

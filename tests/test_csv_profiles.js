@@ -69,3 +69,12 @@ test('similar-new confirmation groups include only selected new repeats',()=>{
  assert.equal(c.selectedSimilarGroups(rows,[{index:0},{index:1},{index:2},{index:3}])[0].count,2);
  assert.equal(c.selectedSimilarGroups(rows,[{index:1},{index:2},{index:3}]).length,0);
 });
+test('optional category mapping survives saved profiles and clears for legacy profiles',async()=>{
+ const {context:c,$,state}=fixture();
+ state.profiles[0].mapping.category='3';
+ $('#import-account').value='1';await c.selectAccountProfile();
+ assert.equal($('#map-category').value,'3');assert.equal(c.mapping().category,'3');
+ c.csvText='statement';await c.loadHeaders();assert.equal($('#map-category').value,'3');
+ $('#import-account').value='2';await c.selectAccountProfile();
+ assert.equal($('#map-category').value,'');assert.equal(c.mapping().category,'');
+});

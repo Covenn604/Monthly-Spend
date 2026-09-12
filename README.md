@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.5.1** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.5.2** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -76,7 +76,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.1` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.2` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |
@@ -176,7 +176,7 @@ Open **Import transactions**, select the destination account, and upload the CSV
 | Amounts | One signed amount column, or separate debit and credit columns. Parenthesized negatives and optional decimal-comma formatting are supported. |
 | Size | Up to 2,000,000 bytes and 5,000 data rows, with at most 100 header columns. |
 
-Only the selected **date, description, and amount fields** are imported. Account identifiers, cheque numbers, running balances, source IDs, and other unmapped fields are ignored. Saved mappings use column positions, so review them if a bank changes its export layout.
+The selected **date, description, and amount fields** are imported, plus an optional **category column**. Leave the category column unmapped for normal bank imports. For migration files, existing category names match without regard to capitalization or extra spaces. New names appear as **New: …** in the preview and are created only for selected expenses or refunds when you confirm the import. You can choose another category or Uncategorized per row. Blank category cells use the usual automatic suggestions; an explicit Uncategorized value leaves the row uncategorized. Income and transfers do not receive spending categories. The category mapping is saved with your import profile. Account identifiers, cheque numbers, running balances, source IDs, and other unmapped fields are ignored. Saved mappings use column positions, so review them if a bank changes its export layout.
 
 ### Import workflow
 
