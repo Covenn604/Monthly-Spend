@@ -67,6 +67,7 @@ class MultiUserTests(unittest.TestCase):
         self.assertEqual(self.req('/api/transactions',who='alice')[1]['transactions'],[])
         self.assertNotIn('Private original',self.req('/api/export',who='alice')[1])
         self.assertEqual(self.req('/api/transactions/1','DELETE',{},'alice')[0],400)
+        self.assertEqual(self.req('/api/transactions/delete','POST',{'ids':[1],'confirmed':True},'alice')[0],400)
         self.assertEqual(self.req('/api/transactions/category','POST',{'ids':[1],'category_id':2},'alice')[0],400)
         self.assertEqual(self.req('/api/accounts','POST',{'name':'Alice bank','opening':'0','user_id':1},'alice')[0],200)
         self.assertEqual(self.req('/api/state')[1]['accounts'][0]['name'],'Original bank')

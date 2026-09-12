@@ -53,7 +53,7 @@ function renderOverview(){
  $('#trend').innerHTML=report.trend.map(t=>`<div class="trend-col"><div class="bars" role="img" aria-label="${esc(t.month)}: income ${esc(money(t.income))}, expenses ${esc(money(t.expenses))}"><div class="bar income" style="height:${Math.max(0,t.income)/peak*100}%"></div><div class="bar" style="height:${Math.max(0,t.expenses)/peak*100}%"></div></div><small>${new Date(t.month+'-15T12:00:00').toLocaleDateString('en-CA',{month:'short'})}</small><div class="trend-values">${t.has_data?moneyHtml(t.income)+'<br>'+moneyHtml(t.expenses):'No records'}</div></div>`).join('');
 }
 function renderTransactions(){selectedTransactions.clear();const cleanup=$('#transaction-scope').value==='all'&&!$('#show-completed').checked;$('#show-completed-label').hidden=$('#transaction-scope').value!=='all';$('#category-filter').disabled=cleanup;if(cleanup)$('#category-filter').value='none';const search=$('#search').value.trim().toLowerCase(),filter=$('#category-filter').value;const rows=transactionRows().filter(t=>(!cleanup||(['expense','refund'].includes(t.kind)&&!t.category_id))&&(!search||[t.payee,t.account,t.note].join(' ').toLowerCase().includes(search))&&(!filter||(filter==='none'?!t.category_id:String(t.category_id)===filter)));$('#tx-count').textContent=`${rows.length} ${cleanup?'to categorize':'transactions'} · ${$('#transaction-scope').value==='all'?'All dates':$('#month').value}`;
- $('#tx-body').innerHTML=rows.length?rows.map(t=>`<tr><td><input type="checkbox" data-select="${t.id}" aria-label="Select ${esc(t.payee)} on ${esc(t.date)}" ${['expense','refund'].includes(t.kind)?'':'disabled title="Only expenses and refunds use spending categories"'}></td><td>${esc(t.date)}</td><td><strong>${esc(t.payee)}</strong><small>${esc(t.account)}</small></td><td>${t.kind==='income'||t.kind==='transfer'?'—':esc(t.category)}<small>${esc(t.kind)}${t.transfer_id?' · linked':''}</small></td><td class="transaction-notes">${esc(t.note||'')}</td><td class="number ${t.amount>0?'down':''}">${moneyHtml(t.amount)}</td><td>${!t.transfer_id?`<button class="secondary" data-edit="${t.id}">Edit</button> `:''}<button class="secondary" data-delete="${t.id}">Delete</button></td></tr>`).join(''):`<tr><td colspan="7" class="empty">${cleanup?(search?'No uncategorized expenses or refunds match your search.':'All caught up — no expenses or refunds need a category. Show categorized, income and transfers to review other records.'):'No matching transactions in this date range.'}</td></tr>`;
+ $('#tx-body').innerHTML=rows.length?rows.map(t=>`<tr><td><input type="checkbox" data-select="${t.id}" aria-label="Select ${esc(t.payee)} on ${esc(t.date)}" ></td><td>${esc(t.date)}</td><td><strong>${esc(t.payee)}</strong><small>${esc(t.account)}</small></td><td>${t.kind==='income'||t.kind==='transfer'?'—':esc(t.category)}<small>${esc(t.kind)}${t.transfer_id?' · linked':''}</small></td><td class="transaction-notes">${esc(t.note||'')}</td><td class="number ${t.amount>0?'down':''}">${moneyHtml(t.amount)}</td><td>${!t.transfer_id?`<button class="secondary" data-edit="${t.id}">Edit</button> `:''}<button class="secondary" data-delete="${t.id}">Delete</button></td></tr>`).join(''):`<tr><td colspan="7" class="empty">${cleanup?(search?'No uncategorized expenses or refunds match your search.':'All caught up — no expenses or refunds need a category. Show categorized, income and transfers to review other records.'):'No matching transactions in this date range.'}</td></tr>`;
  updateSelection();
 }
 function txType(){const editing=!!$('#tx-form').elements.id.value,transfer=$('#tx-kind').value==='transfer';$('#destination-label').hidden=!transfer||editing;$('#tx-cat-label').hidden=['income','transfer'].includes($('#tx-kind').value);$('#tx-help').textContent=transfer?(editing?'This edits one imported transfer row. Keep its signed amount; mark the counterpart on the other account as a transfer too.':'A transfer creates linked entries in both accounts and is excluded from spending. Enter a positive amount leaving the source account.'):'Enter a positive amount. Refunds reduce spending in the selected category.';}
@@ -104,7 +104,9 @@ function updateSelection(){
  $('#select-matches').disabled=!eligible.length;
  $('#select-matches').checked=eligible.length>0&&selectedTransactions.size===eligible.length;
  $('#select-matches').indeterminate=selectedTransactions.size>0&&selectedTransactions.size<eligible.length;
- $('#apply-category').disabled=!selectedTransactions.size||!$('#bulk-category').value;
+ $('#delete-selected').disabled=!selectedTransactions.size;
+ const categoryEligible=transactionRows().filter(t=>selectedTransactions.has(t.id)).every(t=>['expense','refund'].includes(t.kind));
+ $('#apply-category').disabled=!selectedTransactions.size||!$('#bulk-category').value||!categoryEligible;
 }
 $('#transaction-scope').onchange=()=>task(async()=>{
  const request=++scopeRequest,scope=$('#transaction-scope').value;$('#show-completed').checked=false;$('#category-filter').value='';
@@ -117,6 +119,31 @@ $('#transaction-scope').onchange=()=>task(async()=>{
 });
 $('#tx-body').onchange=e=>{const input=e.target.closest('[data-select]');if(!input||input.disabled)return;const id=Number(input.dataset.select);if(input.checked)selectedTransactions.add(id);else selectedTransactions.delete(id);updateSelection();};
 $('#select-matches').onchange=e=>{selectedTransactions.clear();$('#tx-body').querySelectorAll('[data-select]:not(:disabled)').forEach(input=>{input.checked=e.target.checked;if(input.checked)selectedTransactions.add(Number(input.dataset.select));});updateSelection();};
+$('#select-all-transactions').onclick=async e=>{
+ await task(async()=>{
+  const request=++scopeRequest;
+  const result=await api('/api/transactions');
+  if(request!==scopeRequest||!state)return;
+  allTransactions=result.transactions;
+  $('#transaction-scope').value='all';$('#show-completed').checked=true;
+  $('#search').value='';$('#category-filter').value='';
+  renderTransactions();syncMonthControl();
+  $('#tx-body').querySelectorAll('[data-select]').forEach(input=>{input.checked=true;selectedTransactions.add(Number(input.dataset.select));});
+  updateSelection();
+ },e.currentTarget);
+};
+$('#delete-selected').onclick=async e=>{
+ const ids=[...selectedTransactions];
+ if(!ids.length)return;
+ const linked=transactionRows().some(t=>selectedTransactions.has(t.id)&&t.transfer_id);
+ const warning=`Permanently delete ${ids.length} selected transactions?${linked?'\n\nBoth sides of selected linked transfers will be deleted, including any entries outside the current filters.':''}\n\nThis cannot be undone. Account balances and spending totals will be recalculated.\n\nProceed with deletion?`;
+ if(!confirm(warning))return;
+ await task(async()=>{
+  const result=await api('/api/transactions/delete','POST',{ids,confirmed:true});
+  selectedTransactions.clear();await refresh();notify(`${result.deleted} transactions permanently deleted.`);
+ },e.currentTarget);
+ updateSelection();
+};
 $('#show-completed').onchange=()=>{$('#category-filter').value='';renderTransactions();};
 $('#bulk-category').onchange=updateSelection;
 $('#apply-category').onclick=async e=>{

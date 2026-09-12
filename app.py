@@ -381,6 +381,25 @@ def commit_import(c,data):
     c.execute('DELETE FROM previews WHERE id=?',(data['token'],))
     return dict(imported=count,batch_id=batch)
 
+def delete_transactions(c,data):
+    ids=data.get('ids')
+    if data.get('confirmed') is not True: raise Invalid('Confirm permanent transaction deletion.')
+    if not isinstance(ids,list) or not ids or any(type(i) is not int or i<=0 for i in ids):
+        raise Invalid('Select valid transactions to delete.')
+    if len(set(ids))!=len(ids): raise Invalid('Repeated transaction selection.')
+    c.execute('BEGIN IMMEDIATE')
+    # A temporary table supports large selections without SQLite parameter limits.
+    c.execute('CREATE TEMP TABLE IF NOT EXISTS delete_selection(id INTEGER PRIMARY KEY)')
+    c.execute('DELETE FROM delete_selection')
+    c.executemany('INSERT INTO delete_selection VALUES (?)',[(i,) for i in ids])
+    if c.execute('SELECT 1 FROM delete_selection s LEFT JOIN transactions t ON t.id=s.id WHERE t.id IS NULL LIMIT 1').fetchone():
+        raise Invalid('Some selected transactions no longer exist. Refresh and select again.')
+    c.execute('INSERT OR IGNORE INTO delete_selection SELECT t.id FROM transactions t WHERE t.transfer_id IN (SELECT x.transfer_id FROM transactions x JOIN delete_selection s ON s.id=x.id WHERE x.transfer_id IS NOT NULL)')
+    count=c.execute('SELECT COUNT(*) FROM delete_selection').fetchone()[0]
+    c.execute('DELETE FROM transactions WHERE id IN (SELECT id FROM delete_selection)')
+    c.execute('DROP TABLE delete_selection')
+    return {'deleted':count}
+
 def categorize_transactions(c, data):
     ids = data.get('ids')
     if not isinstance(ids, list) or not ids or len(ids) > 5000:
@@ -537,6 +556,10 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/transactions' and method=='GET':
                     rows=[dict(r) for r in c.execute('SELECT t.*,a.name account,COALESCE(c.name,"Uncategorized") category FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN categories c ON c.id=t.category_id ORDER BY t.date DESC,t.id DESC')]
                     return self.send(200,{'transactions':rows})
+                if path=='/api/transactions/delete' and method=='POST':
+                    result=delete_transactions(c,data)
+                    c.commit()
+                    return self.send(200,result)
                 if path=='/api/transactions/category' and method=='POST':
                     result=categorize_transactions(c,data)
                     c.commit()

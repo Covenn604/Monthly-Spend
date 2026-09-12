@@ -15,7 +15,7 @@ import app
 import auth
 from desktop.export_api import ExportApi
 
-VERSION = '0.5.2'
+VERSION = '0.5.3'
 
 def icon_path():
     return app.ROOT/'static'/'spearmint.ico' if getattr(sys,'frozen',False) else Path(__file__).parent/'spearmint.ico'

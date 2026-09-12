@@ -1,4 +1,4 @@
-#define AppVersion "0.5.2"
+#define AppVersion "0.5.3"
 [Setup]
 AppId={{50AE1652-4D38-47A3-9C87-673C2EB13D94}
 AppName=Spearmint
