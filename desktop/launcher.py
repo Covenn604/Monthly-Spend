@@ -13,9 +13,10 @@ if not getattr(sys, 'frozen', False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app
 import auth
-from desktop.export_api import ExportApi
+from desktop.export_api import ExportApi, DesktopApi
+from desktop.updater import UpdateManager
 
-VERSION = '0.5.3'
+VERSION = '0.5.4'
 
 def icon_path():
     return app.ROOT/'static'/'spearmint.ico' if getattr(sys,'frozen',False) else Path(__file__).parent/'spearmint.ico'
@@ -160,9 +161,13 @@ def ui_smoke_test():
         folder = Path(tmp)
         auth.init(folder, 'smoke-only-password-123', 'admin')
         with local_server(folder) as server:
-            export_api = ExportApi()
+            import io
+            smoke_updater = UpdateManager(folder/'updates', VERSION, sys.executable,
+                opener=lambda url: io.BytesIO(json.dumps({'tag_name': VERSION, 'draft': False, 'prerelease': False}).encode()))
+            export_api = DesktopApi(smoke_updater)
             window = webview.create_window('Spearmint UI check', f'http://127.0.0.1:{server.server_port}', js_api=export_api)
             export_api._window = window
+            smoke_updater.window = window
             window_icon(window)
             loaded = Event()
             outcome = []
@@ -202,6 +207,9 @@ def ui_smoke_test():
                         time.sleep(0.3)
                         if not window.evaluate_js("(() => {const label=document.querySelector('#show-completed-label'),box=label.querySelector('input').getBoundingClientRect(),text=label.querySelector('span').getBoundingClientRect(),count=document.querySelector('#tx-count').getBoundingClientRect();return box.width<=24 && text.left>=box.right && (count.left>=text.right || count.top>=text.bottom);})()"):
                             raise RuntimeError('Transaction filter controls overlap.')
+                    wait_for("!document.querySelector('#check-updates').hidden")
+                    window.evaluate_js("document.querySelector('#check-updates').click()")
+                    wait_for("document.querySelector('#notice').textContent.includes('up to date')")
                     outcome.append(True)
                 finally:
                     window.destroy()
@@ -224,17 +232,32 @@ def main():
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Spearmint.Desktop')
     folder = data_path()
+    updater = UpdateManager(folder.parent/'updates', VERSION, sys.executable) if getattr(sys,'frozen',False) else None
     with single_instance(folder.parent):
         if needs_setup(folder) and not setup_account(folder):
             return 0
         import webview
         with local_server(folder) as server:
-            export_api = ExportApi()
+            export_api = DesktopApi(updater) if updater else ExportApi()
             window = webview.create_window('Spearmint', f'http://127.0.0.1:{server.server_port}', width=1280, height=900, min_size=(780, 600), js_api=export_api)
             export_api._window = window
             window_icon(window)
             # Ephemeral browser session; the financial data remains in SQLite.
-            webview.start(gui='edgechromium', private_mode=True)
+            try:
+                if updater: window.events.loaded += lambda: updater.start(window)
+                webview.start(gui='edgechromium', private_mode=True)
+            finally:
+                if updater: updater.stop()
+    if updater:
+        try:
+            updater.launch_pending()
+        except Exception as error:
+            from tkinter import Tk, messagebox
+            root = Tk();root.withdraw()
+            if icon_path().exists(): root.iconbitmap(str(icon_path()))
+            messagebox.showerror('Update could not start', 'Your current installation and saved data are unchanged. Reopen Spearmint and try again.\n\n'+str(error), parent=root)
+            root.destroy()
+            return 1
     return 0
 
 

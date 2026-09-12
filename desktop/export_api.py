@@ -36,3 +36,12 @@ class ExportApi:
             if temporary and temporary.exists():
                 temporary.unlink()
             self._lock.release()
+
+
+class DesktopApi(ExportApi):
+    def __init__(self, updater):
+        super().__init__()
+        self._updater = updater
+
+    def check_updates(self):
+        return self._updater.request_check()

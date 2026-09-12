@@ -6,7 +6,7 @@ Spearmint is a self-hosted spending tracker inspired by Mint. Record your transa
 
 Use it from a computer or phone on your home network. Import bank statements or enter transactions manually; your financial records stay on your server.
 
-**Current version: 0.5.3** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
+**Current version: 0.5.4** · [Docker image](https://github.com/Covenn604/spearmint/pkgs/container/spearmint) · [Report an issue](https://github.com/Covenn604/spearmint/issues)
 
 Spearmint is an independent project and is not affiliated with Mint or Intuit. It is an early-stage application intended for personal use on a trusted network.
 
@@ -34,7 +34,9 @@ If Microsoft WebView2 Runtime is missing, the installer runs Microsoft's signed 
 
 Financial data is stored in `%LOCALAPPDATA%\Spearmint\data`. The backend listens only on `127.0.0.1` using an available port and stops when the desktop window closes. Only one desktop instance may use that data folder at a time. Other devices cannot connect to the standalone edition; use Docker for server access.
 
-To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. **Export transactions** opens a Windows Save As dialog so you can choose the CSV filename and destination. There is no automatic updater or synchronization in this initial desktop edition.
+To back up Windows data, close Spearmint and copy the entire data folder to a separate backup location. To restore, close the app and restore a complete backup to that folder. Install a newer installer over the existing installation to update. Uninstall removes program files and shortcuts but preserves financial data. **Export transactions** opens a Windows Save As dialog so you can choose the CSV filename and destination. The Windows app checks GitHub Releases on startup and hourly while open. New stable releases prompt you to update; declining silences automatic prompts for 24 hours, including across restarts. **Check for updates** performs an immediate check even during that pause. Accepting downloads and verifies the installer against GitHub’s SHA-256 digest, closes the app, installs into the existing program directory, and reopens Spearmint. Saved data is preserved; save any form edits before accepting. Offline or failed background checks do not interrupt normal use. Download or verification failures leave the running version in place. There is no synchronization between installations.
+
+Install v0.5.4 manually once to enable future updates. The updater only uses published, non-prerelease GitHub Releases with a newer version and a matching `Spearmint-<version>-Windows-x64-Setup.exe` asset containing a GitHub SHA-256 digest. Supported tags include `0.5.4`, `v0.5.4`, and `Spearmint-v0.5.4`. Actions artifacts and Docker images do not trigger Windows prompts. Continue uploading the installer to Releases when publishing a Windows version. Update preferences, staged installers, and `install.log` are stored in `%LOCALAPPDATA%\Spearmint\updates`, separately from financial data. Docker has no automatic update checks.
 
 The Windows workflow tests the packaged backend, installed WebView2 login window, installation, and data preservation on uninstall. It cannot replace hands-on testing of first-run setup, CSV file selection, and everyday use on Windows 11. Windows installers are distributed through [GitHub Releases](https://github.com/Covenn604/spearmint/releases).
 
@@ -76,7 +78,7 @@ These variables are read by the supplied Compose file. Set them in `.env` or in 
 | --- | --- | --- |
 | `APP_PASSWORD` | Required | Initial administrator password; at least 12 characters. Changing it later does not reset an existing password. |
 | `ADMIN_USERNAME` | `admin` | Administrator username on first setup. |
-| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.3` for the current release tag or a published `:sha-…` tag for a specific source revision. |
+| `APP_IMAGE` | `ghcr.io/covenn604/spearmint:latest` | Image to run. Use `:0.5.4` for the current release tag or a published `:sha-…` tag for a specific source revision. |
 | `APP_PORT` | `8085` | Port exposed on the host; the container listens on `8080`. |
 | `DATA_LOCATION` | `spearmint-data` | Default named volume, or an absolute host directory mounted at `/data`. |
 | `PUID` | `10001` | Numeric user ID for the container process. |

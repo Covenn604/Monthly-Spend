@@ -1,4 +1,4 @@
-#define AppVersion "0.5.3"
+#define AppVersion "0.5.4"
 [Setup]
 AppId={{50AE1652-4D38-47A3-9C87-673C2EB13D94}
 AppName=Spearmint
@@ -27,10 +27,16 @@ Name: "{group}\Spearmint"; Filename: "{app}\Spearmint.exe"
 Name: "{autodesktop}\Spearmint"; Filename: "{app}\Spearmint.exe"; Tasks: desktopicon
 [Run]
 Filename: "{tmp}\WebView2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft WebView2 Runtime..."; Flags: waituntilterminated; Check: NeedsWebView2
-Filename: "{app}\Spearmint.exe"; Description: "Open Spearmint"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Spearmint.exe"; Description: "Open Spearmint"; Flags: nowait postinstall skipifsilent; Check: not IsAutoUpdate
+Filename: "{app}\Spearmint.exe"; Flags: nowait; Check: IsAutoUpdate
 ; No UninstallDelete entry: financial data is deliberately preserved.
 
 [Code]
+function IsAutoUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:SPEARMINTUPDATE|0}') = '1';
+end;
+
 function NeedsWebView2: Boolean;
 var Version: String;
 begin

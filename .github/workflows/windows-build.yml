@@ -60,6 +60,20 @@ jobs:
           $data = "$env:LOCALAPPDATA/Spearmint/data"
           New-Item -ItemType Directory -Force $data | Out-Null
           Set-Content "$data/preserve-test.txt" 'keep this'
+          # Exercise an in-place unattended update and the automatic relaunch.
+          $process = Start-Process $installer -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NORESTARTAPPLICATIONS /SPEARMINTUPDATE=1' -PassThru
+          if (!$process.WaitForExit(120000)) { throw 'Automatic update install timed out' }
+          $process.Refresh()
+          if ($process.ExitCode -ne 0) { throw 'Automatic update install failed' }
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            $reopened = Get-Process Spearmint -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe.Replace('/', '\') }
+            if ($reopened) { break }
+            Start-Sleep -Milliseconds 250
+          } while ((Get-Date) -lt $deadline)
+          if (!$reopened -or !(Test-Path "$data/preserve-test.txt")) { throw 'Update did not relaunch or preserve data' }
+          $reopened | Stop-Process -Force
+
           $process = Start-Process "$env:LOCALAPPDATA/Programs/Spearmint/unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0 -or !(Test-Path "$data/preserve-test.txt")) { throw 'Uninstall failed or removed data' }
       - name: Add checksum
